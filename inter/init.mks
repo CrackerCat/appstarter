@@ -1,0 +1,39 @@
+count=100
+speed=1.0
+start data >>
+
+DispatchPointer(0, 0, 0, 810, 1790, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 810, 1790, 0, 0, 0, 0, 0, 0, 0)
+UserWait(1000)
+DispatchPointer(0, 0, 0, 810, 1790, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 810, 1790, 0, 0, 0, 0, 0, 0, 0)
+UserWait(1000)
+DispatchPointer(0, 0, 0, 810, 1790, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 810, 1790, 0, 0, 0, 0, 0, 0, 0)
+UserWait(500)
+DispatchPointer(0, 0, 0, 640, 640, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 640, 640, 0, 0, 0, 0, 0, 0, 0)
+UserWait(500)
+DispatchPointer(0, 0, 0, 640, 640, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 640, 640, 0, 0, 0, 0, 0, 0, 0)
+UserWait(500)
+DispatchPointer(0, 0, 0, 640, 640, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 640, 640, 0, 0, 0, 0, 0, 0, 0)
+
+DispatchPointer(0, 0, 0, 640, 960, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 2, 540, 960, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 440, 960, 0, 0, 0, 0, 0, 0, 0)
+UserWait(500)
+DispatchPointer(0, 0, 0, 640, 960, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 2, 540, 960, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 440, 960, 0, 0, 0, 0, 0, 0, 0)
+UserWait(500)
+DispatchPointer(0, 0, 0, 640, 960, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 2, 540, 960, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 440, 960, 0, 0, 0, 0, 0, 0, 0)
+UserWait(500)
+DispatchPointer(0, 0, 0, 540, 1770, 0, 0, 0, 0, 0, 0, 0)
+DispatchPointer(0, 0, 1, 540, 1770, 0, 0, 0, 0, 0, 0, 0)
+UserWait(1000)
+
+
