@@ -10,13 +10,13 @@ import argparse, sys, os
 try:
     import requests
 except Exception as e:
-    print('sudo pip install requests')
+    print('sudo pip3 install requests')
     sys.exit()
 
 try:
     from bs4 import BeautifulSoup
 except Exception as e:
-    print('sudo pip install bs4')
+    print('sudo pip3 install bs4')
     sys.exit()
     #print(e)
 #print('requirements ok')

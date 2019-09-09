@@ -1,4 +1,5 @@
-r=`adb shell wm size | cut -d ' ' -f 3`
+_adb_=$1
+r=`$_adb_ shell wm size | cut -d ' ' -f 3`
 wh=(${r//x/ })
 #自动点击权限弹框：启动 - 点击右下三次
 #自动点击权限弹框：启动 - 点击中右三次
@@ -44,20 +45,15 @@ DispatchPointer(0, 0, 1, "$[${wh[0]}/2], `expr ${wh[1]} - 150`", 0, 0, 0, 0, 0, 
 UserWait(1000)
 
 "> inter/init.mks
-adb push inter/init.mks /sdcard/ &>/dev/null
+$_adb_ push inter/init.mks /sdcard/ &>/dev/null
 
 while true :
 do
-    cur=`adb shell 'dumpsys window windows' | grep mCurrentFocus | cut -d'/' -f1 | rev | cut -d' ' -f1 | rev`
-    if [ "$cur" == "$1" ]
+    cur=`$_adb_  shell 'dumpsys window windows' | grep mCurrentFocus | cut -d'/' -f1 | rev | cut -d' ' -f1 | rev`
+    if [ "$cur" == "$2" ]
     then
-        adb shell "su -c 'monkey -f /sdcard/init.mks 1'" &>/dev/null
+        $_adb_ shell "su -c 'monkey -f /sdcard/init.mks 1'" &>/dev/null
     fi
     sleep 1
-    deviceids=(`adb devices -l | grep 'device usb'|awk '{print $1}' `)
-    if [ ${#deviceids[@]} -eq 0 ]
-    then
-        echo "[!]No device available"
-        exit
-    fi
+    checkOnline
 done
