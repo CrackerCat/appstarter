@@ -11,6 +11,7 @@
     - 4, -l 包名或包名前缀  ->  搜索关联APP
     - 5, -x  ->  搜索xiaomi关联APP
     - 6, -c  ->  清理后台进程
+    - 7,  -s device_id  ->  指定运行设备(若使用则必须放在第一个参数位置)
 - 退出: Ctrl+C
 - pkglist-app.mi.com: 小米系APP
 - pkglist-sys: MIUI系统APP
