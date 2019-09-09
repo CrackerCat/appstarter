@@ -257,14 +257,16 @@ class APKCook:
             ret = ret.replace(' BROWSABLE', '')
             ret = ret.replace('!activity-alias!', '')
             ret = ret.replace('!disabled!', '')
-            ret = re.sub('@.*?,', '', ret)
-            print(ret)
+            ret += ','
+            ret = re.sub('@.*?,', ',', ret)
+            print(ret.strip(','))
         elif monkey == 's':
             import re
             ret = ",".join(self.get_services())
             ret = ret.replace('!disabled!', '')
-            ret = re.sub('@.*?,', '', ret)
-            print(ret)
+            ret += ','
+            ret = re.sub('@.*?,', ',', ret)
+            print(ret.strip(','))
         else:
             print ("===暴露组件===(注意调用权限，动态registerReceiver未检测)")
             print ("Package: "+self.get_package())
