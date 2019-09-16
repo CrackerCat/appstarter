@@ -16,9 +16,9 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Androguard.  If not, see <http://www.gnu.org/licenses/>.
 
-import bytecode
+from . import bytecode
 
-from bytecode import SV
+from .bytecode import SV
 
 from io import StringIO
 from struct import pack, unpack
@@ -88,11 +88,13 @@ class StringBlock:
 
         while length > 0:
             offset += 2
-            # Unicode character python2
-            try:
-                data += unichr(self.getShort(self.m_strings, offset))
-            except:
-                data += chr(self.getShort(self.m_strings, offset))
+            # # Unicode character python2
+            # try:
+            #     data += unichr(self.getShort(self.m_strings, offset))
+            # except:
+            #     data += chr(self.getShort(self.m_strings, offset))
+
+            data += chr(self.getShort(self.m_strings, offset))
 
             # FIXME
             if data[-1] == "&":

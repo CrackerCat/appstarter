@@ -8,10 +8,11 @@
 # 加密zip ChilkatZip
 
 
-import bytecode
+from . import bytecode
 
-from axmlprinter import AXMLPrinter
-from bytecode import SV
+from . import axmlprinter
+from .axmlprinter import AXMLPrinter
+from .bytecode import SV
 
 import zipfile
 from io import StringIO, BytesIO
@@ -259,14 +260,16 @@ class APKCook:
             ret = ret.replace('!disabled!', '')
             ret += ','
             ret = re.sub('@.*?,', ',', ret)
-            print(ret.strip(','))
+            #print(ret.strip(','))
+            return ret.strip(',')
         elif monkey == 's':
             import re
             ret = ",".join(self.get_services())
             ret = ret.replace('!disabled!', '')
             ret += ','
             ret = re.sub('@.*?,', ',', ret)
-            print(ret.strip(','))
+            #print(ret.strip(','))
+            return ret.strip(',')
         else:
             print ("===暴露组件===(注意调用权限，动态registerReceiver未检测)")
             print ("Package: "+self.get_package())

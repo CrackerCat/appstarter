@@ -1,7 +1,0 @@
-count=100
-speed=1.0
-start data >>
-
-DispatchPointer(10000, 10000, 0, 270, 1770, 0, 0, 0, 0, 0, 0, 0)
-DispatchPointer(10000, 10000, 1, 270, 1770, 0, 0, 0, 0, 0, 0, 0)
-UserWait(7000)

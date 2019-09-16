@@ -16,12 +16,13 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Androguard.  If not, see <http://www.gnu.org/licenses/>.
 
-import bytecode
+from . import bytecode
 
-import stringblock
-import typeconstants as tc
-from stringblock import StringBlock
-from bytecode import SV
+from . import stringblock
+from . import typeconstants as tc
+from . import stringblock
+from .stringblock import StringBlock
+from .bytecode import SV
 
 from io import StringIO
 from struct import pack, unpack

@@ -13,7 +13,6 @@ com.xiaomi.vipaccount
 com.android.providers.media
 com.milink.service
 com.qti.service.colorservice
-com.qiyi.video
 com.xiaomi.powerchecker
 com.xiaomi.account
 com.android.wallpapercropper
@@ -154,7 +153,6 @@ com.miui.notes
 com.miui.video
 com.miui.wmsvc
 com.xiaomi.market
-com.topjohnwu.magisk
 com.miui.translationservice
 com.miui.cloudservice
 com.android.managedprovisioning
@@ -228,5 +226,4 @@ com.android.providers.contacts
 com.android.captiveportallogin
 com.miui.core
 com.miui.home
-com.achievo.vipshop
 com.miui.audioeffect

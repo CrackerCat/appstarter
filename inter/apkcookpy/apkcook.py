@@ -7,8 +7,8 @@
 
 '''
 
-import argparse
-import apk
+from . import argparse
+from . import apk
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Android apk tools")

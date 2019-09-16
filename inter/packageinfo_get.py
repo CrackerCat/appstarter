@@ -145,8 +145,40 @@ def get_search(package):
             result.append(x)
 
     return result
- 
+ ###########
 
+def getpkg(package, same):
+    #根据包名获取下载链接、appid等
+    packageinfo = get_packageinfo(package)
+    if packageinfo:
+        #print(package+', '+ packageinfo['appid']+', '+packageinfo['company']+ ', '+packageinfo['download']+ ', '+packageinfo['update'])
+        if not same:
+            #print(packageinfo['download'])
+            return packageinfo['download']
+        #根据appid查询同开发者应用
+        appid = packageinfo['appid']
+        if same:
+            samedevpackage = get_samedev(appid)
+            #print('Same dev total: '+str(len(samedevpackage)))
+            pkgs = []
+            for x in samedevpackage:
+                pkgs.append(x['package'])
+            #print(', '.join(pkgs))
+            return ', '.join(pkgs)
+
+    else:
+        #包名前缀情况下，进行模糊查询
+        if same:
+            searchpackage = get_search(package)
+            #print('Search total: '+str(len(searchpackage)))
+            #print(', '.join(searchpackage))
+            return ', '.join(searchpackage)
+        else:
+            #print('error')
+            return ''
+            #print('检查下包名是否正确，或加上-s选项')
+
+####
 def handlepkgfile(pkgfile):
     if os.path.isfile('pkglist-app.mi.com'):
         print('Already done')
@@ -218,29 +250,4 @@ if __name__ == '__main__':
     if not package:
         parser.print_help()
         sys.exit()
-
-    #根据包名获取下载链接、appid等
-    packageinfo = get_packageinfo(package)
-    if packageinfo:
-        #print(package+', '+ packageinfo['appid']+', '+packageinfo['company']+ ', '+packageinfo['download']+ ', '+packageinfo['update'])
-        if not same:
-            print(packageinfo['download'])
-        #根据appid查询同开发者应用
-        appid = packageinfo['appid']
-        if same:
-            samedevpackage = get_samedev(appid)
-            #print('Same dev total: '+str(len(samedevpackage)))
-            pkgs = []
-            for x in samedevpackage:
-                pkgs.append(x['package'])
-            print(', '.join(pkgs))
-
-    else:
-        #包名前缀情况下，进行模糊查询
-        if same:
-            searchpackage = get_search(package)
-            #print('Search total: '+str(len(searchpackage)))
-            print(', '.join(searchpackage))
-        else:
-            print('error')
-            #print('检查下包名是否正确，或加上-s选项')
+    getpkg(package, same)
