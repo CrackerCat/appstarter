@@ -17,10 +17,7 @@
 # along with Androguard.  If not, see <http://www.gnu.org/licenses/>.
 
 from . import bytecode
-
-from . import stringblock
 from . import typeconstants as tc
-from . import stringblock
 from .stringblock import StringBlock
 from .bytecode import SV
 

@@ -7,10 +7,6 @@
 '''
 # 加密zip ChilkatZip
 
-
-from . import bytecode
-
-from . import axmlprinter
 from .axmlprinter import AXMLPrinter
 from .bytecode import SV
 

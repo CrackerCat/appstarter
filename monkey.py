@@ -116,7 +116,7 @@ def killPermissionRequest(adb, deviceid):
             for d in data:
                 tmp = d.split()
                 if len(tmp) == 8 and tmp[7] == p:
-                    logging.info('Hook com.lbe.security.miui:ui  @mi5 pid:'+tmp[1])
+                    logging.info('==Hook com.lbe.security.miui:ui  @mi5 pid:'+tmp[1])
                     if not frida:
                         if deviceid:
                             cmd = 'frida -D ' + deviceid+' '
@@ -129,8 +129,6 @@ def killPermissionRequest(adb, deviceid):
                     while not frida.poll():
                         time.sleep(10)
                     frida = ''
-                    
-
 
 def killMonkey(adb):
     logging.info('Clean monkey')
@@ -149,7 +147,7 @@ def killMonkey(adb):
 
 def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     installPkg(adb, pkgList, devicePkg)
-    from inter.apkcookpy.apk import APKCook
+    from inter.apkcookpy.lib.apk import APKCook
     logging.info('=====start monkey=====')
     blacklist = [
         'com.android.settings',
@@ -179,7 +177,6 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     #权限申请hook
     pt = threading.Thread(target=killPermissionRequest, args=(adb, deviceid), daemon=True)
     pt.start()
-    time.sleep(5)
     
     for p in pkgList:
         if p in blacklist:
