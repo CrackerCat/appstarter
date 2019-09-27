@@ -154,7 +154,7 @@ def getpkg(package, same):
         #print(package+', '+ packageinfo['appid']+', '+packageinfo['company']+ ', '+packageinfo['download']+ ', '+packageinfo['update'])
         if not same:
             #print(packageinfo['download'])
-            return packageinfo['download']
+            return packageinfo.get('download')
         #根据appid查询同开发者应用
         appid = packageinfo['appid']
         if same:

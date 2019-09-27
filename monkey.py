@@ -68,6 +68,8 @@ def downloadPkgList(adb, pkgList, devicePkg):
                     ret = execShell('mv '+sp+'.tmp '+sp+'.apk')
                 else:
                     logging.info('Downlod error ')
+            else:
+                logging.info('pkg illegal ')
         
     logging.info('====Download done====')
 
@@ -83,7 +85,7 @@ def getinstallmks(adb):
     '''
     ret = execShell(adb+' shell wm size')
     if 'e' in ret.keys():
-        logging.info(ret.get('e'))
+        logging.error(ret.get('e'))
         return False
     #Physical size: 1080x1920
     tmp = ret.get('d')
@@ -97,100 +99,51 @@ def getinstallmks(adb):
     
     ret = execShell(adb+' shell "echo \' '+out+'\' >/sdcard/install.mks"')
     if 'e' in ret.keys():
-        logging.info(ret.get('e'))
+        logging.error(ret.get('e'))
         return False
 
     return True
 
 def killPermissionRequest(adb, deviceid):
-    #第一个app hook不到
+    #进程需要权限请求激活，第一个app可能权限绕不过
     p = 'com.lbe.security.miui:ui'
     curdir = os.path.dirname(os.path.abspath(__file__))
-    frida = ''
-    cmd = adb + ' shell " getprop ro.product.model" '
-    ret = execShell(cmd)
-    model = ret.get('d').strip()
-    tpcmd = adb + ' shell "ps -ef | grep '+p+'" '
-    if model == 'MI MAX 2':
-        tpcmd = adb + ' shell "ps  | grep '+p+'" '
-        while True:
-            ret = execShell(tpcmd)
-            if 'd' in ret.keys():
-                data = ret.get('d').split('\n')
-                for d in data:
-                    tmp = d.split()
-                    if len(tmp) == 9 and tmp[8] == p:
-                        logging.info('==Hook com.lbe.security.miui:ui  @mi5 pid:'+tmp[1])
-                        if not frida:
-                            if deviceid:
-                                cmd = 'frida -D ' + deviceid+' '
-                            else:
-                                cmd = 'frida -U '
-                                
-                            cmd += ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+tmp[1]
-                            frida = execShellDaemon(cmd)
-                            
-                        while not frida.poll():
-                            time.sleep(10)
-                        frida = ''
-    else:
-        while True:
-            ret = execShell(tpcmd)
-            if 'd' in ret.keys():
-                data = ret.get('d').split('\n')
-                for d in data:
-                    tmp = d.split()
-                    if len(tmp) == 8 and tmp[7] == p:
-                        logging.info('==Hook com.lbe.security.miui:ui  @mi5 pid:'+tmp[1])
-                        if not frida:
-                            if deviceid:
-                                cmd = 'frida -D ' + deviceid+' '
-                            else:
-                                cmd = 'frida -U '
-                                
-                            cmd += ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+tmp[1]
-                            frida = execShellDaemon(cmd)
-                            
-                        while not frida.poll():
-                            time.sleep(10)
-                        frida = ''
-
-def killMonkey(adb):
-    logging.info('Clean monkey')
-    cmd = adb + ' shell " getprop ro.product.model" '
-    ret = execShell(cmd)
-    model = ret.get('d')
-    if model:
-        model = model.strip()
-    
-    if model == 'MI MAX 2':
-        cmd = adb + ' shell "ps  | grep com.android.commands.monkey" '
-        ret = execShell(cmd)
+    tpcmd = adb + ' shell "ps -A | grep '+p+'" '
+    while True:
+        ret = execShell(tpcmd)
         if 'd' in ret.keys():
             data = ret.get('d').split('\n')
             for d in data:
                 tmp = d.split()
-                if len(tmp) == 9 and tmp[8] == 'com.android.commands.monkey':
-                    cmd = adb + ' shell "su -c \' kill -9 '+tmp[1]+'\' "'
-                    ret = execShell(cmd)
-                    if 'e' in ret.keys():
-                        logging.info(ret.get('e'))
-        logging.info('Clean monkey done')
-        return
-    
-    cmd = adb + ' shell "ps -ef | grep com.android.commands.monkey" '
+                if len(tmp) == 9 and tmp[8] == p:
+                    logging.info('==Hook '+p+'  pid:'+tmp[1])
+                    if deviceid:
+                        cmd = 'frida -D ' + deviceid+' '
+                    else:
+                        cmd = 'frida -U '
+                        
+                    cmd += ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+tmp[1]
+                    frida = execShellDaemon(cmd)
+                        
+                    while not frida.poll():
+                        time.sleep(10)
+
+def killMonkey(adb):
+    logging.info('Clean monkey')
+    cmd = adb + ' shell "ps -A | grep com.android.commands.monkey" '
     ret = execShell(cmd)
     if 'd' in ret.keys():
         data = ret.get('d').split('\n')
         for d in data:
             tmp = d.split()
-            if len(tmp) == 8 and tmp[7] == 'com.android.commands.monkey':
+            if len(tmp) == 9 and tmp[8] == 'com.android.commands.monkey':
                 cmd = adb + ' shell "su -c \' kill -9 '+tmp[1]+'\' "'
                 ret = execShell(cmd)
                 if 'e' in ret.keys():
                     logging.info(ret.get('e'))
-    logging.info('Clean monkey done')
 
+    logging.info('Clean monkey done')
+    
 def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     installPkg(adb, pkgList, devicePkg)
     from inter.apkcookpy.lib.apk import APKCook
@@ -204,25 +157,20 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     cmd = adb + ' shell "su -c \'setenforce 0\'" '
     ret = execShell(cmd)
     if 'e' in ret.keys():
-        logging.info(ret.get('e'))
+        logging.error(ret.get('e'))
     
     cmd = adb + ' shell  "mkdir /sdcard/monkeylogs"'
     ret = execShell(cmd)
     
     curdir = os.path.dirname(os.path.abspath(__file__))
     frida = False
-    cmd = adb + ' shell  "ps -ef | grep frida"'
+    cmd = adb + ' shell  "ps -A | grep frida"'
     ret = execShell(cmd)
     if 'd' in ret.keys():
         if ret.get('d').find('frida-helper-') != -1:
-            frida = True
-        else:
-            cmd = adb + ' shell  "ps | grep frida"'
-            ret = execShell(cmd)
-            if ret.get('d').find('frida-helper-') != -1:
-                frida = True
+            frida = True        
     if not frida:
-        logging.info('== frida server closed==')
+        logging.error('== frida server closed==')
         return
 
     #权限申请hook
@@ -232,9 +180,12 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     for p in pkgList:
         if p in blacklist:
             continue
+        if p not in devicePkg:
+            logging.error(p+' not installed')
+            continue
         #检查设备在线
         if not checkOnline(deviceid):
-            logging.info('Device offline')
+            logging.error('Device offline')
             return
         #准备apk文件
         sp = curdir+'/apps/'+p
@@ -245,84 +196,101 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
                 path = ret.get('d').split(':')[1].strip()
                 logging.info('Pull from device')
                 cmd = adb + ' pull '+path+' '+sp
-                ret = execShell(cmd)
-                if 'd' in ret.keys():
+                ret1 = execShell(cmd)
+                if 'd' in ret1.keys():
                     execShell('mv '+sp+' '+sp+'.apk')
                 else:
-                    logging.info(ret.get('e'))
-        
-        #解析activity/service组件
-        if os.path.isfile(sp+'.apk'):
-            logging.info('=='+p)
-            
-            #frida unload ssl
-            if deviceid:
-                cmd = 'frida -D '+deviceid+' '
+                    logging.error(ret1.get('e'))
             else:
-                cmd = 'frida -U '
-            cmd += ' --no-pause -l '+curdir+'/inter/unload_ssl.js -f '+p
-            frida = execShellDaemon(cmd)
-
-            encrypt = False
-            try:
-                activity = APKCook(sp+'.apk').show('a')
-                if activity:
-                    activity = activity.split(',')
-                if len(activity) < 2:
-                    encrypt = True
-
-                #防止单个activity卡死
-                timeout = 60
-                timeoutThread = threading.Thread(target=timeoutKIll, args=(adb, p, timeout), daemon=True)
-                timeoutThread.start()
-                for a in activity:
-                    logging.info(a)
-                    cmd = adb + ' shell "su -c \'am start -n '+p+'/'+a+'\' " '
-                    #timeout not working, because connected to pipe
-                    execShell(cmd, 20)
-
-                    cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 133 > /sdcard/monkeylogs/'+p+'.log\' " '
-                    execShell(cmd, 20)
-                    if not timeoutThread.is_alive():
-                        timeoutThread = threading.Thread(target=timeoutKIll, args=(adb, p, timeout), daemon=True)
-                        timeoutThread.start()
-
-                service = APKCook(sp+'.apk').show('s')
-                if service:
-                    service = service.split(',')
-
-                for s in service:
-                    logging.info(s)
-                    cmd = adb + ' shell "su -c \'am start-service  '+p+'/'+s+'\' " '
-                    execShell(cmd, 20)
-                    time.sleep(2)
-                
-            except Exception as e:
-                # import traceback
-                # traceback.print_exc()
-                logging.info('==xml parse error'+str(e))
-                encrypt = True
+                logging.error(ret.get('e'))
+        
+        
+        if not os.path.isfile(sp+'.apk'):
+            logging.error(p+'.apk not exists')
+            continue
+        
+        logging.info('=='+p)
             
-            if encrypt:
-                cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 1333 > /sdcard/monkeylogs/'+p+'.log\' " '
-                ret = execShell(cmd)
-                # if 'e' in ret.keys():
-                #     logging.info(ret.get('e'))
+        #frida unload ssl
+        if deviceid:
+            cmd = 'frida -D '+deviceid+' '
+        else:
+            cmd = 'frida -U '
+        cmd += ' --no-pause -l '+curdir+'/inter/unload_ssl.js -f '+p
+        frida = execShellDaemon(cmd)
 
-            cmd = adb + ' shell "am force-stop '+p+' " '
+        #解析activity/service组件
+        encrypt = False
+        try:
+            # has exception
+            activity = APKCook(sp+'.apk').show('a')
+            if activity:
+                activity = activity.split(',')
+            else:
+                activity = []
+            if len(activity) < 2:
+                encrypt = True
+
+            #防止单个activity卡死
+            timeout = 60
+            timeoutThread = threading.Thread(target=timeoutKIll, args=(adb, p, timeout), daemon=True)
+            timeoutThread.start()
+            for a in activity:
+                logging.info(a)
+                cmd = adb + ' shell "su -c \'am start -n '+p+'/'+a+'\' " '
+                #timeout not working, because connected to pipe
+                execShell(cmd, 20)
+
+                cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 133 > /sdcard/monkeylogs/'+p+'.log\' " '
+                execShell(cmd, 20)
+                if not timeoutThread.is_alive():
+                    timeoutThread = threading.Thread(target=timeoutKIll, args=(adb, p, timeout), daemon=True)
+                    timeoutThread.start()
+
+            service = APKCook(sp+'.apk').show('s')
+            if service:
+                service = service.split(',')
+            else:
+                service = []
+
+            for s in service:
+                logging.info(s)
+                cmd = adb + ' shell "su -c \'am start-service  '+p+'/'+s+'\' " '
+                execShell(cmd, 20)
+                time.sleep(2)
+            
+        except Exception as e:
+            # import traceback
+            # traceback.print_exc()
+            logging.error(str(e))
+            encrypt = True
+        
+        if encrypt:
+            cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 1333 > /sdcard/monkeylogs/'+p+'.log\' " '
             ret = execShell(cmd)
-            frida.terminate()
-            time.sleep(0.2)
-            # cmd = adb + ' shell \' su -c "am force-stop '+p+' "\' '
-            # ret = execShell(cmd)
+            # if 'e' in ret.keys():
+            #     logging.info(ret.get('e'))
+
+        cmd = adb + ' shell "am force-stop '+p+' " '
+        ret = execShell(cmd)
+        frida.terminate()
+        time.sleep(0.2)
+        # cmd = adb + ' shell \' su -c "am force-stop '+p+' "\' '
+        # ret = execShell(cmd)
+
+def timeoutKIll(adb, p, t):
+    for i in range(t):
+        time.sleep(1)
+    cmd = adb + ' shell "am force-stop '+p+' " '
+    execShell(cmd)
 
 def installPkg(adb, pkgList, devicePkg):
     logging.info('======install======')
 
     #install monkey
     if not getinstallmks(adb):
-        logging.info('Install mks error')
-        sys.exit()
+        logging.error('Install mks error')
+        return
     installmcmd = adb + ' shell "su -c \' monkey -f /sdcard/install.mks 1000\'" '
     installm = execShellDaemon(installmcmd)
     ##
@@ -331,7 +299,7 @@ def installPkg(adb, pkgList, devicePkg):
     for p in pkgList:
         logging.info('=='+p)
         if p in devicePkg:
-            logging.info('exists')
+            #logging.info('exists')
             continue
         
         if not os.path.isfile(curdir+'/apps/'+p+'.apk'):
@@ -342,13 +310,12 @@ def installPkg(adb, pkgList, devicePkg):
                 if downloadFile(url, sp+'.tmp'):
                     ret = execShell('mv '+sp+'.tmp '+sp+'.apk')
                 else:
-                    logging.info('Downlod error ')
+                    logging.error('Downlod error ')
             else:
-                logging.info('Get download url error')
+                logging.error('Get download url error')
         
         if not os.path.isfile(curdir+'/apps/'+p+'.apk'):
-            #monkey after install
-            #pkgList.remove(p)
+            logging.error('install error')
             continue
 
         if installm.poll():
@@ -357,9 +324,9 @@ def installPkg(adb, pkgList, devicePkg):
         cmd = adb + ' install '+curdir+'/apps/'+p+'.apk'
         ret = execShell(cmd)
         if 'e' in ret.keys():
-            logging.info(ret.get('e'))
+            logging.error(ret.get('e'))
         else:
-            logging.info('Success')
+            logging.info('Install success')
 
     #清理monkey     
     installm.terminate()
@@ -372,32 +339,39 @@ def uninstallPkg(adb, pkgList, devicePkg):
     for p in pkgList:
         logging.info('Uninstalling '+p)
         if p in devicePkg:
+            # always return true
             cmd = adb + '  shell pm  uninstall '+p
             ret = execShell(cmd)
-            logging.info(ret.get('d'))
+            if ret.get('d'):
+                logging.info('Uninstall succ')
+            else:
+                logging.error('Uninstall error')
+            
         else:
-            logging.info("not installed ")
+            logging.error("not installed ")
 
 def checkOnline(deviceid=''):
-    devices = execShell('adb devices -l').get('d')
+    devices = execShell('adb devices -l').get('d').split('\n')
+    ret = [d for d in devices if d.find('device ') != -1]
+    dids = [d.split()[0] for d in ret]
     if deviceid:
-        if devices.find(deviceid) != -1:
+        if deviceid in dids:
             return True
         else:
             print('Device id error')
-            print(execShell('adb devices').get('d'))
+            print(execShell('adb devices -l').get('d'))
             return False
     else:
-        if devices.count('device ') == 0:
+        if len(dids) == 0:
             print('No device')
             return False
-        elif devices.count('device ') == 1:
+        elif len(dids) == 1:
             return True
-        elif devices.count('device ') > 1:
+        elif len(dids) > 1:
             print('More than one device, please set -s deviceid')
             return False
 
-def getPkgListFile(p):
+def getPkgListFromFile(p):
     if os.path.isfile(p):
         try:
             with open(p, 'r') as f:
@@ -422,17 +396,12 @@ def getDevicePkgs(adb):
             if p:
                 pkgs.append(p.split(':')[1])
     else:
-        logging.info(ret.get('e'))
+        logging.error(ret.get('e'))
     return pkgs
     
 def getPkgListInternet(pkg):
     return packageinfo_get_getpkg(pkg, True)
 
-def timeoutKIll(adb, p, t):
-    for i in range(t):
-        time.sleep(1)
-    cmd = adb + ' shell "am force-stop '+p+' " '
-    execShell(cmd)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='批量启动APP工具')
@@ -443,6 +412,7 @@ if __name__ == '__main__':
     parser.add_argument("-d", "--download", type=str, help="批量下载，输入包名或文件名")
     parser.add_argument("-s", "--deviceid", type=str, help="指定设备（连接多个手机情况下）")
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
+    
     
     if sys.version_info.major != 3:
         print('Run with python3')
@@ -462,7 +432,6 @@ if __name__ == '__main__':
     _deviceid_ = deviceid
     #检测手机
     if not checkOnline(_deviceid_):
-        parser.print_help()
         sys.exit()
     if _deviceid_:
         _adb_ += ' -s '+deviceid
@@ -476,22 +445,22 @@ if __name__ == '__main__':
         
         curdir = os.path.dirname(os.path.abspath(__file__))
         if monkey:
-            pkgs = getPkgListFile(monkey)
+            pkgs = getPkgListFromFile(monkey)
             startMonekyTest(_adb_, pkgs, devicePkg, _deviceid_)
 
         elif install:
-            pkgs = getPkgListFile(install)
+            pkgs = getPkgListFromFile(install)
             installPkg(_adb_, pkgs, devicePkg)
 
         elif uninstall:
-            pkgs = getPkgListFile(uninstall)
+            pkgs = getPkgListFromFile(uninstall)
             uninstallPkg(_adb_, pkgs, devicePkg)
 
         elif lists:
             print(getPkgListInternet(lists))
 
         elif download:
-            pkgs = getPkgListFile(download)
+            pkgs = getPkgListFromFile(download)
             downloadPkgList(_adb_, pkgs, devicePkg)
 
         elif clean:
