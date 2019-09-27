@@ -104,6 +104,19 @@ def getinstallmks(adb):
 
     return True
 
+def getPermissionPid(adb):
+    p = 'com.lbe.security.miui:ui'
+    tpcmd = adb + ' shell "ps -A | grep '+p+'" '
+    ret = execShell(tpcmd)
+    if 'd' in ret.keys():
+        data = ret.get('d').split('\n')
+        for d in data:
+            tmp = d.split()
+            if len(tmp) == 9 and tmp[8] == p:
+                return tmp[1]
+    return ''
+
+
 def killPermissionRequest(adb, deviceid):
     #进程需要权限请求激活，第一个app可能权限绕不过
     p = 'com.lbe.security.miui:ui'
@@ -124,7 +137,7 @@ def killPermissionRequest(adb, deviceid):
                         
                     cmd += ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+tmp[1]
                     frida = execShellDaemon(cmd)
-                        
+                    
                     while not frida.poll():
                         time.sleep(10)
 
@@ -146,6 +159,7 @@ def killMonkey(adb):
     
 def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     installPkg(adb, pkgList, devicePkg)
+    devicePkg = getDevicePkgs(adb)
     from inter.apkcookpy.lib.apk import APKCook
     logging.info('=====start monkey=====')
     blacklist = [
@@ -172,10 +186,19 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
     if not frida:
         logging.error('== frida server closed==')
         return
+     
+    if deviceid:
+        _frida_ = 'frida -D '+deviceid+' '
+    else:
+        _frida_ = 'frida -U '
 
-    #权限申请hook
-    pt = threading.Thread(target=killPermissionRequest, args=(adb, deviceid), daemon=True)
-    pt.start()
+    # 权限申请hook
+    # 使用thread在ctrl+C情况下，难退出
+    pid = getPermissionPid(adb)
+    if pid:
+        logging.info('==Hook com.lbe.security.miui:ui  pid:'+pid)
+        cmd = _frida_ + ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+pid
+        permission_frida = execShellDaemon(cmd)
     
     for p in pkgList:
         if p in blacklist:
@@ -211,13 +234,24 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
         
         logging.info('=='+p)
             
-        #frida unload ssl
-        if deviceid:
-            cmd = 'frida -D '+deviceid+' '
-        else:
-            cmd = 'frida -U '
-        cmd += ' --no-pause -l '+curdir+'/inter/unload_ssl.js -f '+p
-        frida = execShellDaemon(cmd)
+        # frida unload ssl
+        cmd =  _frida_ + ' --no-pause -l '+curdir+'/inter/unload_ssl.js -f '+p
+        ssl_frida = execShellDaemon(cmd)
+
+        # permission hook
+        if not pid:
+            pid = getPermissionPid(adb)
+            if pid:
+                alive = True
+                try:
+                    if permission_frida.poll():
+                        alive = False
+                except Exception:
+                    alive = False
+                if not alive:
+                    logging.info('==Hook com.lbe.security.miui:ui  pid:'+pid)
+                    cmd = _frida_ + ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+pid
+                    permission_frida = execShellDaemon(cmd)
 
         #解析activity/service组件
         encrypt = False
@@ -258,7 +292,17 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
                 cmd = adb + ' shell "su -c \'am start-service  '+p+'/'+s+'\' " '
                 execShell(cmd, 20)
                 time.sleep(2)
-            
+
+        except KeyboardInterrupt:
+            try:
+                permission_frida.terminate()
+            except Exception:
+                pass
+            ssl_frida.terminate()
+            cmd = adb + ' shell "am force-stop '+p+' " '
+            ret = execShell(cmd)
+            raise KeyboardInterrupt
+
         except Exception as e:
             # import traceback
             # traceback.print_exc()
@@ -273,7 +317,7 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
 
         cmd = adb + ' shell "am force-stop '+p+' " '
         ret = execShell(cmd)
-        frida.terminate()
+        ssl_frida.terminate()
         time.sleep(0.2)
         # cmd = adb + ' shell \' su -c "am force-stop '+p+' "\' '
         # ret = execShell(cmd)
