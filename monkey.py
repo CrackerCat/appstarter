@@ -39,6 +39,10 @@ def downloadPkgList(adb, pkgList, devicePkg):
     logging.info('======Download======')
 
     curdir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        os.mkdir(curdir+'/apps')
+    except:
+        pass
     for p in pkgList:
         logging.info('=='+p)
         sp = curdir+'/apps/'+p
