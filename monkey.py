@@ -269,13 +269,17 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
             timeout = 60
             timeoutThread = threading.Thread(target=timeoutKIll, args=(adb, p, timeout), daemon=True)
             timeoutThread.start()
+
+            cmd = adb + ' shell  "rm /sdcard/monkeylogs/'+p+'.log"'
+            ret = execShell(cmd)
+
             for a in activity:
                 logging.info(a)
                 cmd = adb + ' shell "su -c \'am start -n '+p+'/'+a+'\' " '
                 #timeout not working, because connected to pipe
                 execShell(cmd, 20)
 
-                cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 133 > /sdcard/monkeylogs/'+p+'.log\' " '
+                cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 133 >> /sdcard/monkeylogs/'+p+'.log\' " '
                 execShell(cmd, 20)
                 if not timeoutThread.is_alive():
                     timeoutThread = threading.Thread(target=timeoutKIll, args=(adb, p, timeout), daemon=True)
@@ -310,7 +314,7 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
             encrypt = True
         
         if encrypt:
-            cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 1333 > /sdcard/monkeylogs/'+p+'.log\' " '
+            cmd = adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 1333 >> /sdcard/monkeylogs/'+p+'.log\' " '
             ret = execShell(cmd)
             # if 'e' in ret.keys():
             #     logging.info(ret.get('e'))
