@@ -106,6 +106,9 @@ def downloadPkgList(adb, pkgList, devicePkg):
             continue
 
         #从设备拉，组装vdex
+        if not os.path.isfile(curdir+'/inter/compact_dex_converters'):
+            logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34')
+            return
         if p in devicePkg:
             cmd = adb + ' shell "pm path  '+p+'"'
             ret = execShell(cmd)
