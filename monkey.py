@@ -5,6 +5,7 @@ import threading, time
 import logging, argparse
 from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
 import urllib.request
+import zipfile
 
 logging.basicConfig(level = logging.INFO, format='%(asctime)s - %(levelname)s [%(filename)s:%(lineno)d]: %(message)s')
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -35,12 +36,60 @@ def downloadFile(url, savepath):
         logging.info(str(e))
         return False
 
+def isDexExist(apk):
+    zipf = zipfile.ZipFile(apk)
+    if 'classes.dex' in zipf.namelist():
+        return True
+    return False
+
+
+def getDexFromVdex(curdir, path, adb, sp):
+    d = os.path.dirname(path)
+    n = os.path.basename(d)+'.vdex'
+    dt = d+'/oat/arm/'+n
+    # pull vdex
+    cmd = adb + ' pull '+dt+' '+sp
+    ret = execShell(cmd)
+    if 'e' in ret.keys():
+        dt = d+'/oat/arm64/'+n
+        cmd = adb + ' pull '+dt+' '+sp+'.vdex'
+        ret = execShell(cmd)
+    if os.path.isfile(sp+'.vdex'):
+        # android pie
+        # convert to cdex
+        cmd = curdir+'/inter/vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+curdir+'/apps/tmp'
+        ret = execShell(cmd)
+        pkg = os.path.basename(sp)
+        for f in os.listdir(curdir+'/apps/tmp'):
+            if pkg+'_classes' in f and '.cdex' in f:
+                print(f)
+                cmd = curdir+'/inter/compact_dex_converters  '+curdir+'/apps/tmp/'+f
+                ret = execShell(cmd)
+        zipf = zipfile.ZipFile(sp+'.apk', 'a')
+        for f in os.listdir(curdir+'/apps/tmp'):
+            if '.new' in f and pkg+'_classes' in f:
+                print(f)
+                # com.miui.fm_classes.cdex.new
+                zipf.write(curdir+'/apps/tmp/'+f, f.split('_')[1].split('.')[0]+'.dex')
+        zipf.close()
+
+        os.remove(sp+'.vdex')
+        for f in os.listdir(curdir+'/apps/tmp'):
+            os.remove(curdir+'/apps/tmp/'+f)
+        
+    else:
+        logging.error('vdex pull error'+ret.get('e'))
+
 def downloadPkgList(adb, pkgList, devicePkg):
     logging.info('======Download======')
 
     curdir = os.path.dirname(os.path.abspath(__file__))
     try:
         os.mkdir(curdir+'/apps')
+    except:
+        pass
+    try:
+        os.mkdir(curdir+'/apps/tmp')
     except:
         pass
     for p in pkgList:
@@ -50,7 +99,7 @@ def downloadPkgList(adb, pkgList, devicePkg):
             logging.info('exists')
             continue
 
-        #从设备拉
+        #从设备拉，组装vdex
         if p in devicePkg:
             cmd = adb + ' shell "pm path  '+p+'"'
             ret = execShell(cmd)
@@ -61,6 +110,8 @@ def downloadPkgList(adb, pkgList, devicePkg):
                 ret = execShell(cmd)
                 if 'd' in ret.keys():
                     execShell('mv '+sp+' '+sp+'.apk')
+                    if not isDexExist(sp+'.apk'):
+                        getDexFromVdex(curdir, path, adb, sp)
                 else:
                     logging.info(ret.get('e'))
         else:
@@ -469,7 +520,7 @@ if __name__ == '__main__':
     if sys.version_info.major != 3:
         print('Run with python3')
         sys.exit()
-        
+    
     args = parser.parse_args()
     monkey = args.monkey
     install = args.install
