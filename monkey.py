@@ -50,6 +50,7 @@ def getDexFromVdex(curdir, path, adb, sp):
     # pull vdex
     cmd = adb + ' pull '+dt+' '+sp
     ret = execShell(cmd)
+    print(ret)
     if 'e' in ret.keys():
         dt = d+'/oat/arm64/'+n
         cmd = adb + ' pull '+dt+' '+sp+'.vdex'
@@ -84,7 +85,7 @@ def getDexFromVdex(curdir, path, adb, sp):
             os.remove(curdir+'/apps/tmp/'+f)
         
     else:
-        logging.error('vdex pull error'+ret.get('e'))
+        logging.error('dex and vdex not exist')
 
 def downloadPkgList(adb, pkgList, devicePkg):
     logging.info('======Download======')
@@ -107,7 +108,7 @@ def downloadPkgList(adb, pkgList, devicePkg):
 
         #从设备拉，组装vdex
         if not os.path.isfile(curdir+'/inter/compact_dex_converters'):
-            logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34')
+            logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34  and 保存到inter目录下')
             return
         if p in devicePkg:
             cmd = adb + ' shell "pm path  '+p+'"'
