@@ -55,22 +55,28 @@ def getDexFromVdex(curdir, path, adb, sp):
         cmd = adb + ' pull '+dt+' '+sp+'.vdex'
         ret = execShell(cmd)
     if os.path.isfile(sp+'.vdex'):
-        # android pie
+        # android pie 9, multi dex
         # convert to cdex
         cmd = curdir+'/inter/vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+curdir+'/apps/tmp'
         ret = execShell(cmd)
         pkg = os.path.basename(sp)
+        cdex = False
         for f in os.listdir(curdir+'/apps/tmp'):
             if pkg+'_classes' in f and '.cdex' in f:
-                print(f)
+                cdex = True
+                # cdex to dex
                 cmd = curdir+'/inter/compact_dex_converters  '+curdir+'/apps/tmp/'+f
                 ret = execShell(cmd)
+
         zipf = zipfile.ZipFile(sp+'.apk', 'a')
         for f in os.listdir(curdir+'/apps/tmp'):
-            if '.new' in f and pkg+'_classes' in f:
-                print(f)
+            if cdex and '.new' in f and pkg+'_classes' in f:
                 # com.miui.fm_classes.cdex.new
                 zipf.write(curdir+'/apps/tmp/'+f, f.split('_')[1].split('.')[0]+'.dex')
+
+            elif not cdex and '.dex' in f and pkg+'_classes' in f:
+                # com.miui.fm_classes.dex
+                zipf.write(curdir+'/apps/tmp/'+f, f.split('_')[1])
         zipf.close()
 
         os.remove(sp+'.vdex')
