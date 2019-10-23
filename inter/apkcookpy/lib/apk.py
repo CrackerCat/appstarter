@@ -7,8 +7,8 @@
 '''
 # 加密zip ChilkatZip
 
-from .axmlprinter import AXMLPrinter
-from .bytecode import SV
+#from .axmlprinter import AXMLPrinter
+from .axml import AXMLPrinter
 
 import zipfile
 from io import StringIO, BytesIO
@@ -40,7 +40,7 @@ class APKCook:
         if text:
             self.xml = minidom.parseString(self.raw_manifest)
         else:
-            self.xml = minidom.parseString(AXMLPrinter(self.raw_manifest).getBuff())
+            self.xml = minidom.parseString(AXMLPrinter(self.raw_manifest).get_xml())
 
         self.package = self.xml.documentElement.getAttribute("package")
         self.androidversion["Code"] = self.xml.documentElement.getAttribute("android:versionCode")
@@ -281,7 +281,7 @@ class APKCook:
             print ("==Permission:\n"+"\n".join(self.get_permission()))
 
     def output(self):
-        print(AXMLPrinter(self.raw_manifest).getBuff())
+        print(AXMLPrinter(self.raw_manifest).get_xml())
 
 
 if __name__ == "__main__":
