@@ -49,7 +49,7 @@ def getDexFromVdex(curdir, path, adb, sp):
     # pull vdex
     cmd = adb + ' pull '+dt+' '+sp
     ret = execShell(cmd)
-    print(ret)
+    #print(ret)
     if 'e' in ret.keys():
         dt = d+'/oat/arm64/'+n
         cmd = adb + ' pull '+dt+' '+sp+'.vdex'
@@ -102,27 +102,33 @@ def downloadPkgList(adb, pkgList, devicePkg):
         logging.info('=='+p)
         sp = curdir+'/apps/'+p
         if os.path.isfile(sp+'.apk'):
-            logging.info('exists')
-            isnew = False
-            ver = getVersionNameApk(p)
             
-            if not ver:
-                logging.error('version error')
-                #获取本地version错误，不重新下载
-                isnew = True
-            #考虑预置APP和安装的外发APP
-            dver = getVersionNameDevice(adb, p)
-            over = getVersionNameOnline(p)
+            if isDexExist(sp+'.apk'):
+                isnew = False
+                ver = getVersionNameApk(p)
+                
+                if not ver:
+                    logging.error('get apk version error')
+                    #获取本地version错误，不重新下载
+                    isnew = True
+                else:
+                    #考虑预置APP和安装的外发APP
+                    over = getVersionNameOnline(p)
+                    
+                    if over:
+                        if ver and ver >= over:
+                            isnew = True
+                    else:       
+                        dver = getVersionNameDevice(adb, p)
+                        if dver:
+                            if ver and ver >= dver:
+                                isnew = True
+                    
+                    if isnew:
+                        logging.info('exists')
+                        continue
+                    logging.info('old version')
             
-            if over:
-                if ver and ver >= over:
-                    isnew = True
-            if dver:
-                if ver and ver >= dver:
-                    isnew = True
-            if isnew:
-                continue
-            logging.info('old version')
             execShell('rm '+sp+'.apk')
 
         #从设备拉，组装vdex
@@ -142,7 +148,7 @@ def downloadPkgList(adb, pkgList, devicePkg):
                     if not isDexExist(sp+'.apk'):
                         getDexFromVdex(curdir, path, adb, sp)
                 else:
-                    logging.info(ret.get('e'))
+                    logging.error('pull error'+ret.get('e'))
         else:
             #下载
             url = packageinfo_get_getpkg(p, False)
