@@ -103,18 +103,22 @@ def downloadPkgList(adb, pkgList, devicePkg):
         sp = curdir+'/apps/'+p
         if os.path.isfile(sp+'.apk'):
             logging.info('exists')
+            isnew = False
             ver = getVersionNameApk(p)
+            
             if not ver:
                 logging.error('version error')
+                #获取本地version错误，不重新下载
+                isnew = True
             #考虑预置APP和安装的外发APP
             dver = getVersionNameDevice(adb, p)
             over = getVersionNameOnline(p)
-            isnew = False
+            
             if over:
-                if ver >= over:
+                if ver and ver >= over:
                     isnew = True
             if dver:
-                if ver >= dver:
+                if ver and ver >= dver:
                     isnew = True
             if isnew:
                 continue
@@ -481,7 +485,11 @@ def getVersionNameDevice(adb, pkg):
 def getVersionNameApk(pkg):
     from inter.apkcookpy.lib.apk import APKCook
     curdir = os.path.dirname(os.path.abspath(__file__))
-    return APKCook(curdir+'/apps/'+pkg+'.apk').show('v')
+    try:
+        return APKCook(curdir+'/apps/'+pkg+'.apk').show('v')
+    except:
+        return False
+    
 
 def getVersionNameOnline(pkg):
     return packageinfo_get_getpkg(pkg, True, True)
