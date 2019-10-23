@@ -147,9 +147,13 @@ def get_search(package):
     return result
  ###########
 
-def getpkg(package, same):
+def getpkg(package, same, getversion=False):
     #根据包名获取下载链接、appid等
     packageinfo = get_packageinfo(package)
+    if getversion:
+        if packageinfo:
+            return packageinfo.get('version')
+        return False
     if packageinfo:
         #print(package+', '+ packageinfo['appid']+', '+packageinfo['company']+ ', '+packageinfo['download']+ ', '+packageinfo['update'])
         if not same:

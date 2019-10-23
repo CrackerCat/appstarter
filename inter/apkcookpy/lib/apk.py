@@ -266,6 +266,9 @@ class APKCook:
             ret = re.sub('@.*?,', ',', ret)
             #print(ret.strip(','))
             return ret.strip(',')
+        elif monkey == 'v':
+            #print(self.get_androidversion_name())
+            return self.get_androidversion_name()
         else:
             print ("===暴露组件===(注意调用权限，动态registerReceiver未检测)")
             print ("Package: "+self.get_package())

@@ -42,7 +42,6 @@ def isDexExist(apk):
         return True
     return False
 
-
 def getDexFromVdex(curdir, path, adb, sp):
     d = os.path.dirname(path)
     n = os.path.basename(d)+'.vdex'
@@ -104,7 +103,23 @@ def downloadPkgList(adb, pkgList, devicePkg):
         sp = curdir+'/apps/'+p
         if os.path.isfile(sp+'.apk'):
             logging.info('exists')
-            continue
+            ver = getVersionNameApk(p)
+            if not ver:
+                logging.error('version error')
+            #考虑预置APP和安装的外发APP
+            dver = getVersionNameDevice(adb, p)
+            over = getVersionNameOnline(p)
+            isnew = False
+            if over:
+                if ver >= over:
+                    isnew = True
+            if dver:
+                if ver >= dver:
+                    isnew = True
+            if isnew:
+                continue
+            logging.info('old version')
+            execShell('rm '+sp+'.apk')
 
         #从设备拉，组装vdex
         if not os.path.isfile(curdir+'/inter/compact_dex_converters'):
@@ -180,7 +195,6 @@ def getPermissionPid(adb):
             if len(tmp) == 9 and tmp[8] == p:
                 return tmp[1]
     return ''
-
 
 def killPermissionRequest(adb, deviceid):
     #进程需要权限请求激活，第一个app可能权限绕不过
@@ -398,6 +412,7 @@ def timeoutKIll(adb, p, t):
     execShell(cmd)
 
 def installPkg(adb, pkgList, devicePkg):
+    downloadPkgList(adb, pkgList, devicePkg)
     logging.info('======install======')
 
     #install monkey
@@ -416,19 +431,7 @@ def installPkg(adb, pkgList, devicePkg):
             continue
         
         if not os.path.isfile(curdir+'/apps/'+p+'.apk'):
-            url = packageinfo_get_getpkg(p, False)
-            if url :
-                logging.info('Downloading ')
-                sp = curdir+'/apps/'+p
-                if downloadFile(url, sp+'.tmp'):
-                    ret = execShell('mv '+sp+'.tmp '+sp+'.apk')
-                else:
-                    logging.error('Downlod error ')
-            else:
-                logging.error('Get download url error')
-        
-        if not os.path.isfile(curdir+'/apps/'+p+'.apk'):
-            logging.error('install error')
+            logging.error('apk error')
             continue
 
         if installm.poll():
@@ -462,6 +465,26 @@ def uninstallPkg(adb, pkgList, devicePkg):
             
         else:
             logging.error("not installed ")
+
+def getVersionNameDevice(adb, pkg):
+    cmd = adb + ' shell "dumpsys package '+pkg+'  | grep versionName" '
+    ret = execShell(cmd)
+    if ret.get('d'):
+        vs = ret.get('d').split('\n')
+        for v in vs:
+            if v:
+                vv = v.split('=')
+                if len(vv) == 2:
+                    return vv[1]
+    return False
+
+def getVersionNameApk(pkg):
+    from inter.apkcookpy.lib.apk import APKCook
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    return APKCook(curdir+'/apps/'+pkg+'.apk').show('v')
+
+def getVersionNameOnline(pkg):
+    return packageinfo_get_getpkg(pkg, True, True)
 
 def checkOnline(deviceid=''):
     devices = execShell('adb devices -l').get('d').split('\n')
@@ -517,7 +540,7 @@ def getPkgListInternet(pkg):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='批量启动APP工具')
+    parser = argparse.ArgumentParser(description='批量启动APP工具(推荐Linux系统)')
     parser.add_argument("-m", "--monkey", type=str, help="monkey测试，输入包名或文件名(包名以逗号分隔，文件中按行保存)")
     parser.add_argument("-i", "--install", type=str, help="批量安装，输入包名或文件名")
     parser.add_argument("-u", "--uninstall", type=str, help="批量卸载，输入包名或文件名")
@@ -526,11 +549,11 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--deviceid", type=str, help="指定设备（连接多个手机情况下）")
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
     
-    
+
     if sys.version_info.major != 3:
         print('Run with python3')
         sys.exit()
-    
+
     args = parser.parse_args()
     monkey = args.monkey
     install = args.install
