@@ -168,7 +168,7 @@ def downloadPkgList(adb, pkgList, devicePkg):
                 else:
                     logging.info('Downlod error ')
             else:
-                logging.info('!!pkg illegal ')
+                logging.info('!!pkgname not exists')
         
     logging.info('====Download done====')
 
