@@ -152,7 +152,7 @@ def getpkg(package, same, getversion=False):
     packageinfo = get_packageinfo(package)
     if getversion:
         if packageinfo:
-            return packageinfo.get('version')
+            return packageinfo.get('version')+':'+packageinfo.get('update')
         return False
     if packageinfo:
         #print(package+', '+ packageinfo['appid']+', '+packageinfo['company']+ ', '+packageinfo['download']+ ', '+packageinfo['update'])

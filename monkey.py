@@ -1,7 +1,7 @@
 #coding: utf-8
 
 import os, subprocess, sys
-import threading, time
+import threading, time, datetime
 import logging, argparse
 from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
 import urllib.request
@@ -116,8 +116,17 @@ def downloadPkgList(adb, pkgList, devicePkg):
                     over = getVersionNameOnline(p)
                     
                     if over:
-                        if ver and ver >= over:
-                            isnew = True
+                        tover = over.split(':')
+                        if len(tover) == 2:
+                            # 检查是否半年未更新
+                            lastupdate = datetime.datetime.now() - datetime.timedelta(days = 180)
+                            lastupdate = lastupdate.strftime("%Y-%m-%d")
+                            if lastupdate > tover[1]:
+                                logging.info('!!outdated')
+                                execShell('rm '+sp+'.apk')
+                                continue
+                            if ver and ver >= tover[0]:
+                                isnew = True
                     else:       
                         dver = getVersionNameDevice(adb, p)
                         if dver:
@@ -159,7 +168,7 @@ def downloadPkgList(adb, pkgList, devicePkg):
                 else:
                     logging.info('Downlod error ')
             else:
-                logging.info('pkg illegal ')
+                logging.info('!!pkg illegal ')
         
     logging.info('====Download done====')
 
