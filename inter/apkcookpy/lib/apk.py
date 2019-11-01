@@ -245,11 +245,44 @@ class APKCook:
                 
         return out
     
+    def get_activities_all(self):
+        out = []
+        for item in self.xml.getElementsByTagName("activity"):
+            name = item.getAttribute("android:name")
+            out.append(name)
+
+        return out
+    
+    def get_services_all(self):
+        out = []
+        for item in self.xml.getElementsByTagName("service"):
+            name = item.getAttribute("android:name")
+            out.append(name)
+
+        return out
+    
+    def get_receivers_all(self):
+        out = []
+        for item in self.xml.getElementsByTagName("receiver"):
+            name = item.getAttribute("android:name")
+            out.append(name)
+
+        return out
     
     
     def show(self, monkey=False):
+        import re
         if monkey == 'a':
-            import re
+            return self.get_activities_all()
+        elif monkey == 's':
+            return self.get_services_all()
+        elif monkey == 'r':
+            return self.get_receivers_all()
+
+        elif monkey == 'v':
+            #print(self.get_androidversion_name())
+            return self.get_androidversion_name()
+        if monkey == 'ma':
             ret = ",".join(self.get_activities())
             ret = ret.replace(' BROWSABLE', '')
             ret = ret.replace('!activity-alias!', '')
@@ -258,17 +291,20 @@ class APKCook:
             ret = re.sub('@.*?,', ',', ret)
             #print(ret.strip(','))
             return ret.strip(',')
-        elif monkey == 's':
-            import re
+        elif monkey == 'ms':
             ret = ",".join(self.get_services())
             ret = ret.replace('!disabled!', '')
             ret += ','
             ret = re.sub('@.*?,', ',', ret)
             #print(ret.strip(','))
             return ret.strip(',')
-        elif monkey == 'v':
-            #print(self.get_androidversion_name())
-            return self.get_androidversion_name()
+        elif monkey == 'mr':
+            ret = ",".join(self.get_receivers())
+            ret = ret.replace('!disabled!', '')
+            ret += ','
+            ret = re.sub('@.*?,', ',', ret)
+            #print(ret.strip(','))
+            return ret.strip(',')
         else:
             print ("===暴露组件===(注意调用权限，动态registerReceiver未检测)")
             print ("Package: "+self.get_package())

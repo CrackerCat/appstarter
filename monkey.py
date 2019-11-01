@@ -356,10 +356,6 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
         try:
             # has exception
             activity = APKCook(sp+'.apk').show('a')
-            if activity:
-                activity = activity.split(',')
-            else:
-                activity = []
             if len(activity) < 2:
                 encrypt = True
 
@@ -384,16 +380,18 @@ def startMonekyTest(adb, pkgList, devicePkg, deviceid):
                     timeoutThread.start()
 
             service = APKCook(sp+'.apk').show('s')
-            if service:
-                service = service.split(',')
-            else:
-                service = []
-
             for s in service:
                 logging.info(s)
                 cmd = adb + ' shell "su -c \'am start-service  '+p+'/'+s+'\' " '
                 execShell(cmd, 20)
-                time.sleep(2)
+                time.sleep(1)
+
+            receiver = APKCook(sp+'.apk').show('r')
+            for s in receiver:
+                logging.info(s)
+                cmd = adb + ' shell "su -c \'am broadcast  '+p+'/'+s+'\' " '
+                execShell(cmd, 20)
+                time.sleep(1)
 
         except KeyboardInterrupt:
             try:
@@ -574,6 +572,42 @@ def getExport(pkg):
     else:
         print('apk error')
     
+def getandroidruntime(p, adb):
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    pkg = curdir+'/apps/'+p+'.apk'
+    if os.path.isfile(pkg):
+        cmd = 'pidcat '+p+' -c -l E -t AndroidRuntime >'+p
+        logp = execShellDaemon(cmd)
+        from inter.apkcookpy.lib.apk import APKCook
+        a = APKCook(pkg).show('ma')
+        s = APKCook(pkg).show('ms')
+        r = APKCook(pkg).show('mr')
+        for ai in a.split(','):
+            print(ai)
+            cmd = adb + ' shell "am start -n '+p+'/'+ai+' " '
+            execShell(cmd, 20)
+            time.sleep(2)
+        
+        for ai in s.split(','):
+            print(ai)
+            cmd = adb + ' shell "am start-service -n '+p+'/'+ai+' " '
+            execShell(cmd, 20)
+            time.sleep(0.5)
+
+        for ai in r.split(','):
+            print(ai)
+            cmd = adb + ' shell "am broadcast -n '+p+'/'+ai+' " '
+            execShell(cmd, 20)
+            time.sleep(0.5)
+
+        time.sleep(2)
+        logp.terminate()
+        print('see logfile: '+p)
+    else:
+        print('apk error')
+
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='批量启动APP工具(推荐Linux系统)')
@@ -586,6 +620,7 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
 
     parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
+    parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件")
     
 
     if sys.version_info.major != 3:
@@ -601,6 +636,7 @@ if __name__ == '__main__':
     deviceid = args.deviceid
     clean = args.clean
     export = args.export
+    androidruntime = args.androidruntime
 
     #支持多手机连接情况
     _adb_ = 'adb'
@@ -643,6 +679,9 @@ if __name__ == '__main__':
         
         elif export:
             getExport(export)
+        
+        elif androidruntime:
+            getandroidruntime(androidruntime, _adb_)
 
         else:
             parser.print_help()
