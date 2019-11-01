@@ -504,7 +504,6 @@ def getVersionNameApk(pkg):
         return APKCook(curdir+'/apps/'+pkg+'.apk').show('v')
     except:
         return False
-    
 
 def getVersionNameOnline(pkg):
     return packageinfo_get_getpkg(pkg, True, True)
@@ -561,6 +560,20 @@ def getDevicePkgs(adb):
 def getPkgListInternet(pkg):
     return packageinfo_get_getpkg(pkg, True)
 
+def getExport(pkg):
+    p = ''
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    if os.path.isfile(pkg):
+        p = pkg
+    elif os.path.isfile(curdir+'/apps/'+pkg+'.apk'):
+        p = curdir+'/apps/'+pkg+'.apk'
+
+    if p:
+        from inter.apkcookpy.lib.apk import APKCook
+        APKCook(p).show()
+    else:
+        print('apk error')
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='批量启动APP工具(推荐Linux系统)')
@@ -571,6 +584,8 @@ if __name__ == '__main__':
     parser.add_argument("-d", "--download", type=str, help="批量下载，输入包名或文件名")
     parser.add_argument("-s", "--deviceid", type=str, help="指定设备（连接多个手机情况下）")
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
+
+    parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
     
 
     if sys.version_info.major != 3:
@@ -585,6 +600,7 @@ if __name__ == '__main__':
     download = args.download
     deviceid = args.deviceid
     clean = args.clean
+    export = args.export
 
     #支持多手机连接情况
     _adb_ = 'adb'
@@ -624,6 +640,9 @@ if __name__ == '__main__':
 
         elif clean:
             killMonkey(_adb_)
+        
+        elif export:
+            getExport(export)
 
         else:
             parser.print_help()
