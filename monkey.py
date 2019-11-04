@@ -576,7 +576,7 @@ def getandroidruntime(p, adb):
     curdir = os.path.dirname(os.path.abspath(__file__))
     pkg = curdir+'/apps/'+p+'.apk'
     if os.path.isfile(pkg):
-        cmd = 'pidcat '+p+' -c -l E -t AndroidRuntime >'+p
+        cmd = 'pidcat '+p+' -c -l E -t AndroidRuntime >'+p+'.log'
         logp = execShellDaemon(cmd)
         from inter.apkcookpy.lib.apk import APKCook
         a = APKCook(pkg).show('ma')
@@ -606,6 +606,49 @@ def getandroidruntime(p, adb):
     else:
         print('apk error')
 
+def getportapp(adb):
+    print('Getting device listen port...')
+    cmd = adb + ' shell "netstat -tpln | grep LISTEN"'
+    ret = execShell(cmd)
+    if 'd' in ret.keys():
+        netstats = ret.get('d').strip('\n').split('\n')
+        for t in netstats:
+            #print(t.split())
+            ipportres = t.split()[3]
+            #print(ipportres)
+            ipport = ipportres.split(':')
+            ipportlen = len(ipport)
+            if ipportlen == 2:
+                port = hex(int(ipport[1]))   
+            else:
+                #tcp6
+                port = hex(int(ipport[ipportlen - 1]))
+
+            port = port.replace('0x', '')
+            if ipportlen == 2:
+                cmd = adb +' shell "cat /proc/net/tcp | grep -i '+port+'"'
+            else:
+                #tcp6
+                cmd = adb +' shell "cat /proc/net/tcp6 | grep -i '+port+'"'
+            
+            ret = execShell(cmd)
+            #print(ret)
+            if 'd' in ret.keys():
+                tcps = ret.get('d').strip('\n').split('\n')
+                
+                for t in tcps:
+                    uid = t.split()[7]
+                    if uid == '0':
+                        print(ipportres + ' system uid:0')
+                    else:
+                        cmd = adb +' shell "pm list package --uid '+uid+'"'
+                        ret = execShell(cmd)
+                        #print(ret)
+                        if 'd' in ret.keys():
+                            print(ipportres + ' '+ret.get('d').strip('\n'))
+                        else:
+                            print(ipportres + ' pkg error')
+                    break
 
 
 
@@ -621,6 +664,7 @@ if __name__ == '__main__':
 
     parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
     parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件")
+    parser.add_argument("-p", "--port", action="store_true", help="获取手机监听端口及对应APP")
     
 
     if sys.version_info.major != 3:
@@ -637,6 +681,7 @@ if __name__ == '__main__':
     clean = args.clean
     export = args.export
     androidruntime = args.androidruntime
+    port = args.port
 
     #支持多手机连接情况
     _adb_ = 'adb'
@@ -682,6 +727,10 @@ if __name__ == '__main__':
         
         elif androidruntime:
             getandroidruntime(androidruntime, _adb_)
+
+
+        elif port:
+            getportapp(_adb_)
 
         else:
             parser.print_help()
