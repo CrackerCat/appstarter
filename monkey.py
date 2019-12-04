@@ -573,6 +573,11 @@ def getExport(pkg):
         print('apk error')
     
 def getandroidruntime(p, adb):
+    cmd = 'pidcat -v'
+    ret = execShell(cmd)
+    if 'e' in ret.keys():
+        logging.error('Install pidcat first')
+        return
     curdir = os.path.dirname(os.path.abspath(__file__))
     pkg = curdir+'/apps/'+p+'.apk'
     if os.path.isfile(pkg):
@@ -610,6 +615,7 @@ def getportapp(adb):
     print('Getting device listen port...')
     cmd = adb + ' shell "netstat -tpln | grep LISTEN"'
     ret = execShell(cmd)
+    
     if 'd' in ret.keys():
         netstats = ret.get('d').strip('\n').split('\n')
         for t in netstats:
@@ -650,7 +656,58 @@ def getportapp(adb):
                             print(ipportres + ' pkg error')
                     break
 
+def runandroguard(pkgs):
+    #导入androguard
+    try:
+        from androguard import misc
+    except:
+        logging.error('Install androguard first')
+        return
+    from inter.apkcookpy.lib.apk import APKCook
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    for p in pkgs:
+        try:
+            logging.info('=='+p)
+            pkg = curdir+'/apps/'+p+'.apk'
+            if not os.path.isfile(pkg):
+                logging.error('file not exists')
+                continue
+            #获取Browsable Activity
+            bs = APKCook(pkg).show('b')
+            browsable_activities = ['L'+b.replace('.', '/')+';' for b in bs]
+            blen = len(browsable_activities)
+            logging.info('browsable activities: '+str(blen))
+            if blen < 1:
+                continue
+            logging.info('androguard analysing')
+            a, d, dx = misc.AnalyzeAPK(pkg)
+            
+            
+            print('browsable - loadUrl:')
+            for m in dx.classes['Landroid/webkit/WebView;'].get_methods():
+                if m.name == 'loadUrl':
+                    for _, call, _ in m.get_xref_from():
+                        if call.class_name in browsable_activities:
+                            print(call.class_name+' '+call.name)
 
+            print('browsable - Intent.parseUri:')
+            for m in dx.classes['Landroid/content/Intent;'].get_methods():
+                if m.name == 'parseUri':
+                    for _, call, _ in m.get_xref_from():
+                        if call.class_name in browsable_activities:
+                            print(call.class_name+' '+call.name)
+
+            print('browsable - getIntent:')
+            for m in dx.classes['Landroid/app/Activity;'].get_methods():
+                if m.name == 'getIntent':
+                    for _, call, _ in m.get_xref_from():
+                        if call.class_name in browsable_activities:
+                            print(call.class_name+' '+call.name)
+
+            print('done '+p)
+        except Exception as e:
+            logging.error(p+ ' error: '+str(e))
+                    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='批量启动APP工具(推荐Linux系统)')
@@ -665,6 +722,7 @@ if __name__ == '__main__':
     parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
     parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件")
     parser.add_argument("-p", "--port", action="store_true", help="获取手机监听端口及对应APP")
+    parser.add_argument("-g", "--androguard", type=str, help="包名，androguard辅助发现漏洞")
     
 
     if sys.version_info.major != 3:
@@ -682,6 +740,7 @@ if __name__ == '__main__':
     export = args.export
     androidruntime = args.androidruntime
     port = args.port
+    androguard = args.androguard
 
     #支持多手机连接情况
     _adb_ = 'adb'
@@ -728,9 +787,12 @@ if __name__ == '__main__':
         elif androidruntime:
             getandroidruntime(androidruntime, _adb_)
 
-
         elif port:
             getportapp(_adb_)
+
+        elif androguard:
+            pkgs = getPkgListFromFile(androguard)
+            runandroguard(pkgs)
 
         else:
             parser.print_help()
