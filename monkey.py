@@ -711,7 +711,7 @@ def runandroguard(pkgs):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='批量启动APP工具(推荐Linux系统)')
-    parser.add_argument("-m", "--monkey", type=str, help="monkey测试，输入包名或文件名(包名以逗号分隔，文件中按行保存)")
+    parser.add_argument("-m", "--monkey", type=str, help="monkey测试，输入包名或文件名(包名以逗号分隔，文件中按行保存包名)")
     parser.add_argument("-i", "--install", type=str, help="批量安装，输入包名或文件名")
     parser.add_argument("-u", "--uninstall", type=str, help="批量卸载，输入包名或文件名")
     parser.add_argument("-l", "--lists", type=str, help="搜索包名相关APP，输入包名前缀或完整包名")
@@ -719,10 +719,10 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--deviceid", type=str, help="指定设备（连接多个手机情况下）")
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
 
-    parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
-    parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件")
+    parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件, apk文件或包名")
+    parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件, 包名")
     parser.add_argument("-p", "--port", action="store_true", help="获取手机监听端口及对应APP")
-    parser.add_argument("-g", "--androguard", type=str, help="包名，androguard辅助发现漏洞")
+    parser.add_argument("-g", "--androguard", type=str, help="androguard辅助发现漏洞, 文件名")
     
 
     if sys.version_info.major != 3:
