@@ -572,7 +572,7 @@ def getExport(pkg):
     else:
         print('apk error')
     
-def getandroidruntime(p, adb):
+def getAndroidruntime(p, adb):
     cmd = 'pidcat -v'
     ret = execShell(cmd)
     if 'e' in ret.keys():
@@ -611,8 +611,20 @@ def getandroidruntime(p, adb):
     else:
         print('apk error')
 
-def getportapp(adb):
+def getPortapp(adb):
     print('Getting device listen port...')
+    if isPhoneRooted(adb):
+        cmd = adb + ' shell " su  -c \'netstat -tpln | grep LISTEN\'"'
+        ret = execShell(cmd)
+        if 'd' in ret.keys():
+            info = ret.get('d').strip('\n').split('\n')
+            for  i in info:
+                port = i.split()[3]
+                name = i.split()[6].split('/')[1]
+                print(name+'>'+port)
+        return
+
+    #not rooted   
     cmd = adb + ' shell "netstat -tpln | grep LISTEN"'
     ret = execShell(cmd)
     
@@ -656,7 +668,7 @@ def getportapp(adb):
                             print(ipportres + ' pkg error')
                     break
 
-def runandroguard(pkgs):
+def runAndroguard(pkgs):
     #导入androguard
     try:
         from androguard import misc
@@ -707,7 +719,65 @@ def runandroguard(pkgs):
             print('done '+p)
         except Exception as e:
             logging.error(p+ ' error: '+str(e))
+
+def isPhoneRooted(adb):
+    cmd = adb + ' shell "su -c \'id\'"'
+    ret = execShell(cmd)
+    return 'd' in ret.keys()
+
+def apktool_caller(pkg):
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        print(pkg)
+        if os.path.isdir(curdir+'/appsource/'+pkg):
+            print('already done')
+            return
+        if not os.path.isfile(curdir+'/apps/'+pkg+'.apk'):
+            print(pkg+' not exist')
+            return
+        cmd = 'apktool d -f -r -o '+curdir+'/appsource/'+pkg+' '+curdir+'/apps/'+pkg+'.apk'
+        ret = execShell(cmd, 600)
+        if 'e' in ret.keys():
+            print(ret.get('e'))
+        else:
+            print(pkg+' done')
+    except Exception as e:
+        print(str(e)+str(ret))
+
+def dir_scanner(path):
+    try:
+        for d in os.listdir(path):
+            if d.startswith('smali'):
+                target_file = path+'/'+d+'/com/xiaomi/mipush/sdk/PushMessageHandler.smali'
+                #print(target_file)
+                if os.path.isfile(target_file):
+                    ct = open(target_file, 'r').read()
+                    target = 'com.xiaomi.mipush.sdk.HYBRID_NOTIFICATION_CLICK'
+                    if target in ct:
+                        print('Found '+os.path.basename(path))
                     
+    except Exception as e:
+        pass
+
+def sourceScan(pkgs):
+    from multiprocessing.dummy import Pool as ThreadPool
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        os.mkdir(curdir+'/appsource')
+    except:
+        pass
+
+    #apktool decompile
+    with ThreadPool(5) as tp:
+        tp.map(apktool_caller, pkgs)
+    
+    print('==scanning')
+    #scan
+    pathlist = []
+    for p in pkgs:
+        pathlist.append(curdir+'/appsource/'+p)
+    with ThreadPool(5) as tp:
+        tp.map(dir_scanner, pathlist)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='批量启动APP工具(推荐Linux系统)')
@@ -723,6 +793,7 @@ if __name__ == '__main__':
     parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件, 包名")
     parser.add_argument("-p", "--port", action="store_true", help="获取手机监听端口及对应APP")
     parser.add_argument("-g", "--androguard", type=str, help="androguard辅助发现漏洞, 文件名")
+    parser.add_argument("--source", type=str, help="扫描源码, 文件名或包名")
     
 
     if sys.version_info.major != 3:
@@ -741,7 +812,9 @@ if __name__ == '__main__':
     androidruntime = args.androidruntime
     port = args.port
     androguard = args.androguard
+    source = args.source
 
+    
     #支持多手机连接情况
     _adb_ = 'adb'
     _deviceid_ = deviceid
@@ -750,6 +823,9 @@ if __name__ == '__main__':
         sys.exit()
     if _deviceid_:
         _adb_ += ' -s '+deviceid
+
+    if not isPhoneRooted(_adb_):
+        print('[!]phone not rooted, may not work well')
 
     try:
         #获取设备pkgs
@@ -785,14 +861,18 @@ if __name__ == '__main__':
             getExport(export)
         
         elif androidruntime:
-            getandroidruntime(androidruntime, _adb_)
+            getAndroidruntime(androidruntime, _adb_)
 
         elif port:
-            getportapp(_adb_)
+            getPortapp(_adb_)
 
         elif androguard:
             pkgs = getPkgListFromFile(androguard)
-            runandroguard(pkgs)
+            runAndroguard(pkgs)
+
+        elif source:
+            pkgs = getPkgListFromFile(source)
+            sourceScan(pkgs)
 
         else:
             parser.print_help()
