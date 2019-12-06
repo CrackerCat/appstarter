@@ -4,7 +4,7 @@
 - 批量测试MIUI系统APP及小米系APP
 
 # 使用
-- Usage: python3 monkey.py -h
+- Usage: python3 run.py -h
 - 退出: Ctrl+C
 - pkglist-app.mi.com: 小米系APP
 - pkglist-sys: MIUI系统APP
