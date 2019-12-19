@@ -559,18 +559,23 @@ def getPkgListInternet(pkg):
     return packageinfo_get_getpkg(pkg, True)
 
 def getExport(pkg):
-    p = ''
+    p = []
     curdir = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(pkg):
-        p = pkg
+    if os.path.isfile(pkg) and '.apk' in pkg:
+        p.append(pkg)
     elif os.path.isfile(curdir+'/apps/'+pkg+'.apk'):
-        p = curdir+'/apps/'+pkg+'.apk'
+        p.append(curdir+'/apps/'+pkg+'.apk')
+    elif os.path.isfile(pkg):
+        pp = getPkgListFromFile(pkg)
+        for t in pp:
+            p.append(curdir+'/apps/'+t+'.apk')
 
-    if p:
-        from inter.apkcookpy.lib.apk import APKCook
-        APKCook(p).show()
-    else:
-        print('apk error')
+    for pp in p:
+        try:
+            from inter.apkcookpy.lib.apk import APKCook
+            APKCook(pp).show()
+        except:
+            logging.error('=error '+pp)
     
 def getAndroidruntime(p, adb):
     cmd = 'pidcat -v'
@@ -668,6 +673,32 @@ def getPortapp(adb):
                             print(ipportres + ' pkg error')
                     break
 
+
+def getCallstack(m, callstack, count):
+    ##
+    #获取函数的调用树，全部存储callstack list
+    #count 用于防止栈益处，重载函数可能溢出
+    ##
+    ref = m.get_xref_from()
+    if not ref or len(ref) == 0:
+        return
+    for c,m,_ in ref:
+        callstack.append(c.name+':'+m.name)
+        if count[0] > 500:
+            #print('====max '+c.name+':'+m.name)
+            return
+        count[0] = count[0]+1
+        getCallstack(c.get_method_analysis(m), callstack, count)
+
+
+def getParents(dx, c):
+    ss = []
+    cc = c
+    while cc and cc.extends != 'Ljava/lang/Object;':
+        ss.append(cc.extends)
+        cc = dx.classes.get(cc.extends)
+    return ss
+
 def runAndroguard(pkgs):
     #导入androguard
     try:
@@ -694,30 +725,87 @@ def runAndroguard(pkgs):
             logging.info('androguard analysing')
             a, d, dx = misc.AnalyzeAPK(pkg)
             
+            browsable_activities_t = []
+            for b in browsable_activities:
+                b = dx.classes.get(b)
+                if b:
+                    browsable_activities_t.extend(getParents(dx, b))
+            browsable_activities.extend(browsable_activities_t)
+            browsable_activities = list(set(browsable_activities))
+            logging.info('browsable activities plus: '+str(blen))
             
-            print('browsable - loadUrl:')
+            
+            print('=browsable - loadUrl:')
+            #继承实现
+            for c in dx.get_classes():
+                ss = getParents(dx, c)
+                if 'Landroid/webkit/WebView;' in ss:
+                    for m in c.get_methods():
+                        if m.name == 'loadUrl':
+                            cs = []
+                            count = [0]
+                            getCallstack(m, cs, count)
+                            cs = list(set(cs))
+                            for r in cs:
+                                if r.split(':')[0] in browsable_activities:
+                                    print(r)
+                                    
+            ###实例调用
             for m in dx.classes['Landroid/webkit/WebView;'].get_methods():
                 if m.name == 'loadUrl':
-                    for _, call, _ in m.get_xref_from():
-                        if call.class_name in browsable_activities:
-                            print(call.class_name+' '+call.name)
+                    cs = []
+                    count = [0]
+                    getCallstack(m, cs, count)
+                    cs = list(set(cs))
+                    for r in cs:
+                        if r.split(':')[0] in browsable_activities:
+                            print(r)
 
-            print('browsable - Intent.parseUri:')
-            for m in dx.classes['Landroid/content/Intent;'].get_methods():
-                if m.name == 'parseUri':
-                    for _, call, _ in m.get_xref_from():
-                        if call.class_name in browsable_activities:
-                            print(call.class_name+' '+call.name)
+            print('=browsable - getIntent:')
+            ###实例调用: activity.getIntent()
+            getintent = dx.get_method_analysis_by_name('Landroid/app/Activity;', 'getIntent', '()Landroid/content/Intent;')
+            cs = []
+            count = [0]
+            getCallstack(getintent, cs, count)
+            cs = list(set(cs))
+            for r in cs:
+                if r.split(':')[0] in browsable_activities:
+                    print(r)
+                
 
-            print('browsable - getIntent:')
-            for m in dx.classes['Landroid/app/Activity;'].get_methods():
-                if m.name == 'getIntent':
-                    for _, call, _ in m.get_xref_from():
-                        if call.class_name in browsable_activities:
-                            print(call.class_name+' '+call.name)
+            #继承实现: getIntent()
+            for c in dx.get_classes():
+                ss = getParents(dx, c)
+                if 'Landroid/app/Activity;' in ss:
+                    for m in c.get_methods():
+                        if m.name == 'getIntent':
+                            cs = []
+                            count = [0]
+                            getCallstack(m, cs, count)
+                            cs = list(set(cs))
+                            for r in cs:
+                                if r.split(':')[0] in browsable_activities:
+                                    print(r)
+
+
+            #静态方法
+            print('=browsable - Intent.parseUri:')
+            parseuri = dx.get_method_analysis_by_name('Landroid/content/Intent;', 'parseUri', '(Ljava/lang/String; I)Landroid/content/Intent;')
+            cs = []
+            count = [0]
+            getCallstack(m, cs, count)
+            cs = list(set(cs))
+            for r in cs:
+                if r.split(':')[0] in browsable_activities:
+                    print(r)
+
+            
+            ############
 
             print('done '+p)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             logging.error(p+ ' error: '+str(e))
 
 def isPhoneRooted(adb):
@@ -789,7 +877,7 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--deviceid", type=str, help="指定设备（连接多个手机情况下）")
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
 
-    parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件, apk文件或包名")
+    parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件, apk文件或包名或文件名")
     parser.add_argument("-r", "--androidruntime", type=str, help="获取可崩溃APP的组件, 包名")
     parser.add_argument("-p", "--port", action="store_true", help="获取手机监听端口及对应APP")
     parser.add_argument("-g", "--androguard", type=str, help="androguard辅助发现漏洞, 文件名")
