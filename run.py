@@ -13,9 +13,19 @@ logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 
 def execShellDaemon(cmd):
+    '''
+    功能：后台运行shell命令，不阻塞
+    参数：shell命令
+    返回：Popen对象
+    '''
     return subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
 def execShell(cmd, t=120):
+    '''
+    功能：前台运行shell命令，阻塞
+    参数：shell命令
+    返回：成功返回{'d': DATA}，失败返回{'e': DATA}
+    '''
     ret = {}
     try:
         p = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, shell=True, encoding='utf-8', timeout=t)
@@ -87,6 +97,15 @@ def getDexFromVdex(curdir, path, adb, sp):
         logging.error('dex and vdex not exist')
 
 def downloadPkgList(adb, pkgList, devicePkg):
+    '''
+    功能：批量下载APK
+    参数：adb, 包名列表，手机包名列表
+    返回：无
+
+
+    实现：
+    本地有APK，apk有dex，判断version与线上version
+    '''
     logging.info('======Download======')
 
     curdir = os.path.dirname(os.path.abspath(__file__))
@@ -101,50 +120,56 @@ def downloadPkgList(adb, pkgList, devicePkg):
     for p in pkgList:
         logging.info('=='+p)
         sp = curdir+'/apps/'+p
+        
+        needDownload = False
+        needPullfromDevice = False
+        
         if os.path.isfile(sp+'.apk'):
-            
+        
             if isDexExist(sp+'.apk'):
-                isnew = False
                 ver = getVersionNameApk(p)
+                over = getVersionNameOnline(p)
+                dver = getVersionNameDevice(adb, p)
                 
                 if not ver:
                     logging.error('get apk version error')
-                    #获取本地version错误，不重新下载
-                    isnew = True
                 else:
-                    #考虑预置APP和安装的外发APP
-                    over = getVersionNameOnline(p)
-                    
+                    #线上存在
                     if over:
                         tover = over.split(':')
                         if len(tover) == 2:
-                            # 检查是否半年未更新
+                            # 检查是否半年未更新，未维护APP直接跳过
                             lastupdate = datetime.datetime.now() - datetime.timedelta(days = 180)
                             lastupdate = lastupdate.strftime("%Y-%m-%d")
                             if lastupdate > tover[1]:
                                 logging.info('!!outdated')
+                            if ver < tover[0]:
                                 execShell('rm '+sp+'.apk')
-                                continue
-                            if ver and ver >= tover[0]:
-                                isnew = True
-                    else:       
-                        dver = getVersionNameDevice(adb, p)
+                                if dver >= tover[0]:
+                                    needPullfromDevice = True
+                                else:
+                                    needDownload = True
+                                logging.info('old version - online')
+                        
+                    else:
                         if dver:
-                            if ver and ver >= dver:
-                                isnew = True
+                            if ver < dver:
+                                execShell('rm '+sp+'.apk')
+                                needPullfromDevice = True
+                                logging.info('old version - device')
+                        else:
+                            #app已经不存在
+                            logging.error('app package name changed')
                     
-                    if isnew:
-                        logging.info('exists')
-                        continue
-                    logging.info('old version')
-            
-            execShell('rm '+sp+'.apk')
+            else:
+                needPullfromDevice = True
+                execShell('rm '+sp+'.apk')
 
-        #从设备拉，组装vdex
+        #组装vdex工具
         if not os.path.isfile(curdir+'/inter/compact_dex_converters'):
             logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34  and 保存到inter目录下')
             return
-        if p in devicePkg:
+        if needPullfromDevice:
             cmd = adb + ' shell "pm path  '+p+'"'
             ret = execShell(cmd)
             if 'd' in ret.keys():
@@ -158,7 +183,7 @@ def downloadPkgList(adb, pkgList, devicePkg):
                         getDexFromVdex(curdir, path, adb, sp)
                 else:
                     logging.error('pull error'+ret.get('e'))
-        else:
+        if needDownload:
             #下载
             url = packageinfo_get_getpkg(p, False)
             if url :
