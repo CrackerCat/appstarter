@@ -655,15 +655,17 @@ def getPkgList(pkg):
 
 def getExport(pkg):
     p = []
-    curdir = os.path.dirname(os.path.abspath(__file__))
+    apps = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apps', '')
     if os.path.isfile(pkg) and '.apk' in pkg:
         p.append(pkg)
-    elif os.path.isfile(self._dirapps+pkg+'.apk'):
-        p.append(self._dirapps+pkg+'.apk')
+    elif os.path.isfile(apps+pkg+'.apk'):
+        p.append(apps+pkg+'.apk')
     elif os.path.isfile(pkg):
         pp = getPkgList(pkg)
         for t in pp:
-            p.append(self._dirapps+t+'.apk')
+            p.append(apps+t+'.apk')
+    else:
+        logging.error('pkg input error')
 
     for pp in p:
         try:
