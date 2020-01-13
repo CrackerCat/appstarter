@@ -477,7 +477,7 @@ class AppStarter(object):
                 logging.error('apk file not exists')
                 continue
 
-            ret = self.suinstall(self._dirapps+p+'.apk')
+            ret = self.suinstall(p)
             if 'd' in ret.keys():
                 logging.info('Install success')
             else:
@@ -601,7 +601,10 @@ class AppStarter(object):
 
         logging.info('Clean monkey done')
 
-    def suinstall(self, path):
+    def suinstall(self, pkg):
+        path = '/data/local/tmp/'+pkg+'.apk'
+        cmd = self._adb+' push '+self._dirapps+p+'.apk '+path
+        execShell(cmd)
         cmd = self._adb+' shell "su -c \'pm install '+path+' \'"'
         return execShell(cmd)
 
