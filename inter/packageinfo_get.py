@@ -10,13 +10,19 @@ import argparse, sys, os
 try:
     import requests
 except Exception as e:
-    print('sudo pip3 install requests')
+    print('pip3 install requests')
     sys.exit()
 
 try:
     from bs4 import BeautifulSoup
 except Exception as e:
-    print('sudo pip3 install bs4')
+    print('pip3 install bs4 lxml')
+    sys.exit()
+
+try:
+    import lxml
+except Exception as e:
+    print('pip3 install lxml')
     sys.exit()
     #print(e)
 #print('requirements ok')
@@ -68,6 +74,11 @@ def parse_packageinfo(content):
 
         company = re.findall(u'intro-titles\"><p>(.*?)</p>', content, re.M)
         packageinfo['company'] = company[0]
+
+        name = re.findall(u'intro-titles\"><p>.*?</p><h3>(.*?)</h3>', content, re.M)
+        packageinfo['name'] = name[0]
+
+        #print(packageinfo)
 
         return packageinfo
     
@@ -184,9 +195,6 @@ def getpkg(package, same, getversion=False):
 
 ####
 def handlepkgfile(pkgfile):
-    if os.path.isfile('pkglist-app.mi.com'):
-        print('Already done')
-        return
     pkglist = []
     with open(pkgfile) as f:
         pkglist = f.read().split('\n')
@@ -194,39 +202,41 @@ def handlepkgfile(pkgfile):
     for p in pkglist:
         pkginfo = get_packageinfo(p)
         if pkginfo:
-            #print(p)
+            print(p)
             resultpkg.append(p)
             samedev = get_samedev(pkginfo['appid'])
             tmp = []
             for s in samedev:
                 tmp.append(s['package'])
             resultpkg += tmp
+        else:
+            print('error: '+p)
     resultpkg = list(set(resultpkg))
     #print(len(resultpkg))
-    print(",".join(resultpkg))
-    with open('pkglist-app.mi.com', 'w') as f:
+    #print(",".join(resultpkg))
+    with open(pkgfile+'-all', 'w') as f:
         f.write("\n".join(resultpkg))
 
-def handlepkgfile_latest():
-    if not os.path.isfile('pkglist-app.mi.com'):
-        print('File pkglist-app.mi.com not exists')
+def handlepkgfile_latest(info):
+    if not os.path.isfile(info):
+        print('File not exists')
         return
-    if os.path.isfile('pkglist-app.mi.com-latest'):
-        print('Already done')
-        return
+    
     pkglist = []
-    with open('pkglist-app.mi.com') as f:
+    with open(info) as f:
         pkglist = f.read().split('\n')
     resultpkg = []
     for p in pkglist:
         pkginfo = get_packageinfo(p)
         if pkginfo:
-            print(pkginfo['update']+': '+p)
-            resultpkg.append(pkginfo['update']+': '+p)
+            print(pkginfo.get('update')+': '+p+': '+pkginfo.get('name')+': '+pkginfo.get('company'))
+            resultpkg.append(pkginfo.get('update')+': '+p+': '+pkginfo.get('name')+': '+pkginfo.get('company'))
+        else:
+            resultpkg.append('error: '+p)
 
     resultpkg.sort(reverse=True)
     
-    with open('pkglist-app.mi.com-latest', 'w') as f:
+    with open(info+'-info', 'w') as f:
         f.write("\n".join(resultpkg))
 
 #python2 or python3
@@ -235,7 +245,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--package",type=str, help="package name")
     parser.add_argument("-s", "--same", action="store_true", help="是否获取同开发者应用")
     parser.add_argument("-f", "--file", type=str, help="文件名(测试功能)")
-    parser.add_argument("-l", "--latest", action="store_true", help="应用是否维护ing")
+    parser.add_argument("-i", "--info", type=str, help="包信息")
 
     args = parser.parse_args()
     package = args.package
@@ -246,9 +256,9 @@ if __name__ == '__main__':
         handlepkgfile(pkgfile)
         sys.exit()
 
-    latest = args.latest
-    if latest:
-        handlepkgfile_latest()
+    info = args.info
+    if info:
+        handlepkgfile_latest(info)
         sys.exit()
 
     if not package:

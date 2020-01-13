@@ -45,7 +45,10 @@ class AppStarter(object):
         self._frida = 'frida -U '
         self._did = did
         self._devicepkg = []
-        self._curdir = os.path.dirname(os.path.abspath(__file__))
+        self._curdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '')
+        self._dirapps = os.path.join(self._curdir, 'apps', '')
+        self._dirappstmp = os.path.join(self._dirapps, 'tmp', '')
+        self._dirinter = os.path.join(self._curdir, 'inter', '')
         self._androidver = ''
         self._blacklist = [
             'com.android.settings',
@@ -87,8 +90,6 @@ class AppStarter(object):
         cmd = self._adb + ' shell  "mkdir /sdcard/monkeylogs"'
         ret = execShell(cmd)
         
-        curdir = os.path.dirname(os.path.abspath(__file__))
-        
         if not self.setupFrida():
             return
 
@@ -96,9 +97,10 @@ class AppStarter(object):
         # 使用thread在ctrl+C情况下，难退出
         #vMIUI直接允许权限申请
         pid = self.getPermissionPid()
+        krpjs = self._dirinter+'kill_permission_request.js'
         if pid:
             logging.info('==Hook com.lbe.security.miui:ui  pid:'+pid)
-            cmd = self._frida + ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+pid
+            cmd = self._frida + ' --no-pause -l '+krpjs+' -p '+pid
             permission_frida = execShellDaemon(cmd)
         
         for p in pkgs:
@@ -112,7 +114,7 @@ class AppStarter(object):
                 logging.error('Device offline')
                 return
             #准备apk文件
-            sp = curdir+'/apps/'+p
+            sp = self._dirapps+p
             if not os.path.isfile(sp+'.apk'):
                 cmd = self._adb + ' shell "pm path  '+p+'"'
                 ret = execShell(cmd)
@@ -136,7 +138,8 @@ class AppStarter(object):
             logging.info('=='+p)
                 
             # frida unload ssl
-            cmd =  self._frida + ' --no-pause -l '+curdir+'/inter/unload_ssl.js -f '+p
+            usjs = self._dirinter + 'unload_ssl.js'
+            cmd =  self._frida + ' --no-pause -l '+usjs+' -f '+p
             ssl_frida = execShellDaemon(cmd)
 
             # permission hook
@@ -151,7 +154,7 @@ class AppStarter(object):
                         alive = False
                     if not alive:
                         logging.info('==Hook com.lbe.security.miui:ui  pid:'+pid)
-                        cmd = self._frida + ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+pid
+                        cmd = self._frida + ' --no-pause -l '+krpjs+' -p '+pid
                         permission_frida = execShellDaemon(cmd)
 
             #解析activity/service组件
@@ -249,7 +252,10 @@ class AppStarter(object):
             ret = execShell(cmd)
             
             if 'd' in ret.keys() and 'No such file' in ret.get('d') :
-                frida = 'inter/frida'
+                frida = self._dirinter+'frida'
+                if not os.path.isfile(frida):
+                    logging.error('请配置frida环境(下载frida-arm-server, 重命名frida，放在inter目录)')
+                    return False
                 cmd = self._adb + ' push '+frida+' /data/local/tmp/frida'
                 ret = execShell(cmd)
                 if 'd' in ret.keys():
@@ -339,9 +345,8 @@ class AppStarter(object):
 
     def getVersionApk(self, pkg):
         from inter.apkcookpy.lib.apk import APKCook
-        curdir = os.path.dirname(os.path.abspath(__file__))
         try:
-            return APKCook(curdir+'/apps/'+pkg+'.apk').show('v')
+            return APKCook(self._dirapps+pkg+'.apk').show('v')
         except:
             return False
 
@@ -355,16 +360,16 @@ class AppStarter(object):
         logging.info('======Download======')
 
         try:
-            os.mkdir(self._curdir+'/apps')
+            os.mkdir(self._dirapps)
         except:
             pass
         try:
-            os.mkdir(self._curdir+'/apps/tmp')
+            os.mkdir(self._dirappstmp)
         except:
             pass
         for p in pkgs:
             logging.info('=='+p)
-            sp = self._curdir+'/apps/'+p
+            sp = self._dirapps+p
             
             needDownload = False
             needPullfromDevice = False
@@ -419,11 +424,11 @@ class AppStarter(object):
                     needDownload = True
 
             #android9出现cdex
-            if needPullfromDevice and self._androidver >= '9'  and not os.path.isfile(self._curdir+'/inter/compact_dex_converters'):
+            if needPullfromDevice and self._androidver >= '9'  and not os.path.isfile(self._dirinter+'compact_dex_converters'):
                 logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34  and 保存到inter目录下')
                 return
             #android7.0出现vdex
-            if needPullfromDevice and self._androidver >= '7'  and not os.path.isfile(self._curdir+'/inter/vdexExtractor'):
+            if needPullfromDevice and self._androidver >= '7'  and not os.path.isfile(self._dirinter+'vdexExtractor'):
                 logging.error('please download vdexExtractor first: https://github.com/anestisb/vdexExtractor  and 保存到inter目录下')
                 return
             #android6未处理，需要framework/baksmali
@@ -475,14 +480,14 @@ class AppStarter(object):
                 #logging.info('exists')
                 continue
             
-            if not os.path.isfile(self._curdir+'/apps/'+p+'.apk'):
+            if not os.path.isfile(self._dirapps+p+'.apk'):
                 logging.error('apk file not exists')
                 continue
 
             if installm.poll():
                 installm = execShellDaemon(installmcmd)
             logging.info('Installing ')
-            cmd = self._adb + ' install '+self._curdir+'/apps/'+p+'.apk'
+            cmd = self._adb + ' install '+self._dirapps+p+'.apk'
             ret = execShell(cmd)
             if 'e' in ret.keys():
                 logging.error(ret.get('e'))
@@ -534,31 +539,31 @@ class AppStarter(object):
         if os.path.isfile(sp+'.vdex'):
             # android pie 9, multi dex
             # convert to cdex
-            cmd = self._curdir+'/inter/vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+self._curdir+'/apps/tmp'
+            cmd = self._dirinter+'vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+self._dirappstmp
             ret = execShell(cmd)
             pkg = os.path.basename(sp)
             cdex = False
-            for f in os.listdir(self._curdir+'/apps/tmp'):
+            for f in os.listdir(self._dirappstmp):
                 if pkg+'_classes' in f and '.cdex' in f:
                     cdex = True
                     # cdex to dex
-                    cmd = self._curdir+'/inter/compact_dex_converters  '+self._curdir+'/apps/tmp/'+f
+                    cmd = self._dirinter+'compact_dex_converters  '+self._dirappstmp+f
                     ret = execShell(cmd)
 
             zipf = zipfile.ZipFile(sp+'.apk', 'a')
-            for f in os.listdir(self._curdir+'/apps/tmp'):
+            for f in os.listdir(self._dirappstmp):
                 if cdex and '.new' in f and pkg+'_classes' in f:
                     # com.miui.fm_classes.cdex.new
-                    zipf.write(self._curdir+'/apps/tmp/'+f, f.split('_')[1].split('.')[0]+'.dex')
+                    zipf.write(self._dirappstmp+f, f.split('_')[1].split('.')[0]+'.dex')
 
                 elif not cdex and '.dex' in f and pkg+'_classes' in f:
                     # com.miui.fm_classes.dex
-                    zipf.write(self._curdir+'/apps/tmp/'+f, f.split('_')[1])
+                    zipf.write(self._dirappstmp+f, f.split('_')[1])
             zipf.close()
 
             os.remove(sp+'.vdex')
-            for f in os.listdir(self._curdir+'/apps/tmp'):
-                os.remove(self._curdir+'/apps/tmp/'+f)
+            for f in os.listdir(self._dirappstmp):
+                os.remove(self._dirappstmp+f)
             
         else:
             logging.error('dex and vdex not exist')
@@ -652,12 +657,12 @@ def getExport(pkg):
     curdir = os.path.dirname(os.path.abspath(__file__))
     if os.path.isfile(pkg) and '.apk' in pkg:
         p.append(pkg)
-    elif os.path.isfile(curdir+'/apps/'+pkg+'.apk'):
-        p.append(curdir+'/apps/'+pkg+'.apk')
+    elif os.path.isfile(self._dirapps+pkg+'.apk'):
+        p.append(self._dirapps+pkg+'.apk')
     elif os.path.isfile(pkg):
         pp = getPkgList(pkg)
         for t in pp:
-            p.append(curdir+'/apps/'+t+'.apk')
+            p.append(self._dirapps+t+'.apk')
 
     for pp in p:
         try:
