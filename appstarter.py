@@ -290,7 +290,7 @@ class AppStarter(object):
         ret = execShell(cmd)
         if 'd' in ret.keys():
             logging.info('android version '+ret.get('d'))
-            return ret.get('d')
+            return ret.get('d').rstrip('\n')
 
     def getDevicePkgs(self):
         ret = execShell(self._adb + ' shell pm list packages')
@@ -467,14 +467,6 @@ class AppStarter(object):
 
         logging.info('======install======')
 
-        #install monkey
-        if not self.getinstallmks():
-            logging.error('Install mks error')
-            return
-        installmcmd = self._adb + ' shell "su -c \' monkey -f /sdcard/install.mks 1000\'" '
-        installm = execShellDaemon(installmcmd)
-        ##
-
         for p in pkgs:
             logging.info('=='+p)
             if p in self._devicepkg:
@@ -485,20 +477,44 @@ class AppStarter(object):
                 logging.error('apk file not exists')
                 continue
 
-            if installm.poll():
-                installm = execShellDaemon(installmcmd)
-            logging.info('Installing ')
-            cmd = self._adb + ' install '+self._dirapps+p+'.apk'
-            ret = execShell(cmd)
-            if 'e' in ret.keys():
-                logging.error(ret.get('e'))
-            else:
+            ret = self.suinstall(self._dirapps+p+'.apk')
+            if 'd' in ret.keys():
                 logging.info('Install success')
+            else:
+                logging.error('error install '+ret.get('e'))
 
-        #清理monkey     
-        installm.terminate()
-        time.sleep(1)
-        self.killMonkey()
+        # #install monkey
+        # if not self.getinstallmks():
+        #     logging.error('Install mks error')
+        #     return
+        # installmcmd = self._adb + ' shell "su -c \' monkey -f /sdcard/install.mks 1000\'" '
+        # installm = execShellDaemon(installmcmd)
+        # ##
+
+        # for p in pkgs:
+        #     logging.info('=='+p)
+        #     if p in self._devicepkg:
+        #         #logging.info('exists')
+        #         continue
+            
+        #     if not os.path.isfile(self._dirapps+p+'.apk'):
+        #         logging.error('apk file not exists')
+        #         continue
+
+        #     if installm.poll():
+        #         installm = execShellDaemon(installmcmd)
+        #     logging.info('Installing ')
+        #     cmd = self._adb + ' install '+self._dirapps+p+'.apk'
+        #     ret = execShell(cmd)
+        #     if 'e' in ret.keys():
+        #         logging.error(ret.get('e'))
+        #     else:
+        #         logging.info('Install success')
+
+        # #清理monkey     
+        # installm.terminate()
+        # time.sleep(1)
+        # self.killMonkey()
 
         logging.info('======Install done======')
 
@@ -584,7 +600,11 @@ class AppStarter(object):
                         logging.info(ret.get('e'))
 
         logging.info('Clean monkey done')
-    
+
+    def suinstall(self, path):
+        cmd = self._adb+' shell "su -c \'pm install '+path+' \'"'
+        return execShell(cmd)
+
     def getinstallmks(self):
         #部分机型adb安装app需要手动确认
         out = '''
