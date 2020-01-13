@@ -6,6 +6,7 @@ import logging, argparse
 from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
 import urllib.request
 import zipfile
+import shutil
 
 logging.basicConfig(level = logging.INFO, format='%(asctime)s - %(levelname)s [%(filename)s:%(lineno)d]: %(message)s')
 logging.getLogger("requests").setLevel(logging.WARNING)
@@ -124,7 +125,7 @@ class AppStarter(object):
                     cmd = self._adb + ' pull '+path+' '+sp
                     ret1 = execShell(cmd)
                     if 'd' in ret1.keys():
-                        execShell('mv '+sp+' '+sp+'.apk')
+                        shutil.move(sp, sp+'.apk')
                     else:
                         logging.error(ret1.get('e'))
                 else:
@@ -442,7 +443,7 @@ class AppStarter(object):
                     cmd = self._adb + ' pull '+apkpath+' '+sp
                     ret = execShell(cmd)
                     if 'd' in ret.keys():
-                        execShell('mv '+sp+' '+sp+'.apk')
+                        shutil.move(sp, sp+'.apk')
                         if not self.isDexExist(sp+'.apk') and self._androidver >= '7':
                             self.getDexFromVdex(apkpath, sp)
                     else:
@@ -453,7 +454,7 @@ class AppStarter(object):
                 if url :
                     logging.info('Downloading ')
                     if self.downloadFile(url, sp+'.tmp'):
-                        ret = execShell('mv '+sp+'.tmp '+sp+'.apk')
+                        ret = shutil.move(sp+'.tmp', sp+'.apk')
                     else:
                         logging.info('Downlod error ')
                 else:
