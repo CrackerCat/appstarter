@@ -1,0 +1,749 @@
+#coding: utf-8
+
+import os, subprocess, sys
+import threading, time, datetime
+import logging, argparse
+from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
+import urllib.request
+import zipfile
+
+logging.basicConfig(level = logging.INFO, format='%(asctime)s - %(levelname)s [%(filename)s:%(lineno)d]: %(message)s')
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+
+
+def execShellDaemon(cmd):
+    '''
+    功能：后台运行shell命令，不阻塞
+    参数：shell命令
+    返回：Popen对象
+    '''
+    return subprocess.Popen(cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+
+def execShell(cmd, t=120):
+    '''
+    功能：前台运行shell命令，阻塞
+    参数：shell命令
+    返回：成功返回{'d': DATA}，失败返回{'e': DATA}
+    #不同手机执行命令返回标准不一样
+    '''
+    ret = {}
+    try:
+        p = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, shell=True, encoding='utf-8', timeout=t)
+        if p.returncode == 0:
+            ret['d'] = p.stdout
+        else:
+            ret['e'] = p.stderr
+    except subprocess.TimeoutExpired:
+        ret['e'] = 'timeout'
+
+    return ret
+
+class AppStarter(object):
+    def __init__(self, did):
+        self._adb = 'adb'
+        self._frida = 'frida -U '
+        self._did = did
+        self._devicepkg = []
+        self._curdir = os.path.dirname(os.path.abspath(__file__))
+        self._androidver = ''
+        self._blacklist = [
+            'com.android.settings',
+            'com.topjohnwu.magisk',
+            'com.speedsoftware.rootexplorer'
+        ]
+
+        self._init()
+    
+    def _init(self):
+        #检测多手机设备情况
+        if not self.checkOnline(self._did):
+            sys.exit()
+        if self._did:
+            self._adb = 'adb -s '+self._did
+            self._frida =  'frida -D  ' +self._did
+        
+        #获取手机包列表
+        self._devicepkg = self.getDevicePkgs()
+        self._androidver = self.getAndroidVer()
+
+        if not self.isPhoneRooted():
+            print('[!]phone not rooted, may not work well')
+
+    def monkey(self, pkg, startallcomponent):
+        pkgs = getPkgList(pkg)
+        self.installPkgList(pkgs)
+        self._devicepkg = self.getDevicePkgs()
+        from inter.apkcookpy.lib.apk import APKCook
+        logging.info('=====start monkey=====')
+        
+        #设置selinux
+        #cmd: Failure calling service activity: Failed transaction
+        cmd = self._adb + ' shell "su -c \'setenforce 0\'" '
+        ret = execShell(cmd)
+        if 'e' in ret.keys():
+            logging.error(ret.get('e'))
+        
+        cmd = self._adb + ' shell  "mkdir /sdcard/monkeylogs"'
+        ret = execShell(cmd)
+        
+        curdir = os.path.dirname(os.path.abspath(__file__))
+        
+        if not self.setupFrida():
+            return
+
+        # 权限申请hook
+        # 使用thread在ctrl+C情况下，难退出
+        #vMIUI直接允许权限申请
+        pid = self.getPermissionPid()
+        if pid:
+            logging.info('==Hook com.lbe.security.miui:ui  pid:'+pid)
+            cmd = self._frida + ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+pid
+            permission_frida = execShellDaemon(cmd)
+        
+        for p in pkgs:
+            if p in self._blacklist:
+                continue
+            if p not in self._devicepkg:
+                logging.error(p+' not installed')
+                continue
+            #检查设备在线
+            if not self.checkOnline(self._did):
+                logging.error('Device offline')
+                return
+            #准备apk文件
+            sp = curdir+'/apps/'+p
+            if not os.path.isfile(sp+'.apk'):
+                cmd = self._adb + ' shell "pm path  '+p+'"'
+                ret = execShell(cmd)
+                if 'd' in ret.keys() and ret.get('d'):
+                    path = ret.get('d').split(':')[1].strip()
+                    logging.info('Pull from device')
+                    cmd = self._adb + ' pull '+path+' '+sp
+                    ret1 = execShell(cmd)
+                    if 'd' in ret1.keys():
+                        execShell('mv '+sp+' '+sp+'.apk')
+                    else:
+                        logging.error(ret1.get('e'))
+                else:
+                    logging.error(ret.get('e'))
+            
+            
+            if not os.path.isfile(sp+'.apk'):
+                logging.error(p+'.apk not exists')
+                continue
+            
+            logging.info('=='+p)
+                
+            # frida unload ssl
+            cmd =  self._frida + ' --no-pause -l '+curdir+'/inter/unload_ssl.js -f '+p
+            ssl_frida = execShellDaemon(cmd)
+
+            # permission hook
+            if not pid:
+                pid = self.getPermissionPid()
+                if pid:
+                    alive = True
+                    try:
+                        if permission_frida.poll():
+                            alive = False
+                    except Exception:
+                        alive = False
+                    if not alive:
+                        logging.info('==Hook com.lbe.security.miui:ui  pid:'+pid)
+                        cmd = self._frida + ' --no-pause -l '+curdir+'/inter/kill_permission_request.js -p '+pid
+                        permission_frida = execShellDaemon(cmd)
+
+            #解析activity/service组件
+            encrypt = False
+            try:
+                # has exception
+                if startallcomponent:
+                    activity = APKCook(sp+'.apk').show('a')
+                else:
+                    activity = APKCook(sp+'.apk').show('ma').split(',')
+                if len(activity) < 2:
+                    encrypt = True
+
+                #防止单个activity卡死
+                timeout = 120
+                timeoutThread = threading.Thread(target=self.timeoutKIll, args=(p, timeout), daemon=True)
+                timeoutThread.start()
+
+                cmd = self._adb + ' shell  "rm /sdcard/monkeylogs/'+p+'.log"'
+                ret = execShell(cmd)
+
+                for a in activity:
+                    logging.info(a)
+                    cmd = self._adb + ' shell "su -c \'am start -n '+p+'/'+a+'\' " '
+                    #timeout not working, because connected to pipe
+                    execShell(cmd, 40)
+
+                    cmd = self._adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 133 >> /sdcard/monkeylogs/'+p+'.log\' " '
+                    execShell(cmd, 40)
+                    if not timeoutThread.is_alive():
+                        timeoutThread = threading.Thread(target=self.timeoutKIll, args=(p, timeout), daemon=True)
+                        timeoutThread.start()
+
+                if startallcomponent:
+                    service = APKCook(sp+'.apk').show('s')
+                else:
+                    service = APKCook(sp+'.apk').show('ms').split(',')
+                for s in service:
+                    logging.info(s)
+                    cmd = self._adb + ' shell "su -c \'am start-service  '+p+'/'+s+'\' " '
+                    execShell(cmd, 40)
+                    time.sleep(1)
+
+                if startallcomponent:
+                    receiver = APKCook(sp+'.apk').show('r')
+                else:
+                    receiver = APKCook(sp+'.apk').show('mr').split(',')
+                for s in receiver:
+                    logging.info(s)
+                    cmd = self._adb + ' shell "su -c \'am broadcast  '+p+'/'+s+'\' " '
+                    execShell(cmd, 40)
+                    time.sleep(1)
+
+            except KeyboardInterrupt:
+                try:
+                    permission_frida.terminate()
+                except Exception:
+                    pass
+                ssl_frida.terminate()
+                cmd = self._adb + ' shell "am force-stop '+p+' " '
+                ret = execShell(cmd)
+                raise KeyboardInterrupt
+
+            except Exception as e:
+                # import traceback
+                # traceback.print_exc()
+                logging.error(str(e))
+                encrypt = True
+            
+            if encrypt:
+                cmd = self._adb + ' shell "su -c \'monkey -p '+p+' -vvv  --throttle 100 --pct-syskeys 0  --ignore-crashes 1333 >> /sdcard/monkeylogs/'+p+'.log\' " '
+                ret = execShell(cmd)
+                # if 'e' in ret.keys():
+                #     logging.info(ret.get('e'))
+
+            cmd = self._adb + ' shell "am force-stop '+p+' " '
+            ret = execShell(cmd)
+            ssl_frida.terminate()
+            time.sleep(0.2)
+            # cmd = adb + ' shell \' su -c "am force-stop '+p+' "\' '
+            # ret = execShell(cmd)
+    
+    def timeoutKIll(self, pkg, t):
+        for i in range(t):
+            time.sleep(1)
+        cmd = self._adb + ' shell "am force-stop '+pkg+' " '
+        execShell(cmd)
+
+    def setupFrida(self):
+        cmd = self._adb + ' shell  "ps -A | grep frida"'
+        ret = execShell(cmd)
+        out = str(ret)
+        if 'frida-helper-' not in out:
+            cmd = self._adb + ' shell ls  /data/local/tmp/frida'
+            ret = execShell(cmd)
+            
+            if 'd' in ret.keys() and 'No such file' in ret.get('d') :
+                frida = 'inter/frida'
+                cmd = self._adb + ' push '+frida+' /data/local/tmp/frida'
+                ret = execShell(cmd)
+                if 'd' in ret.keys():
+                    logging.info('push frida success')
+            
+            cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/frida \' " '
+            ret = execShell(cmd)
+            cmd = self._adb + ' shell "su -c \' /data/local/tmp/frida &\' " '
+            ret = execShell(cmd, t=30)
+            #print(ret)
+            if 'd' in ret.keys():
+                cmd = self._adb + ' shell  "ps -A | grep frida"'
+                ret2 = execShell(cmd)
+                if 'd' in ret2.keys() and 'frida-helper-' in ret2.get('d'):
+                    logging.info('frida start success')
+                    return True
+                else:
+                    logging.error('frida start error，请自行安装frida')
+                    return False
+        else:
+            logging.info('frida running ')
+            return True
+
+    def isPhoneRooted(self):
+        cmd = self._adb + ' shell "su -c \'id\'"'
+        ret = execShell(cmd)
+        return 'd' in ret.keys()
+
+    def getAndroidVer(self):
+        cmd = self._adb + ' shell getprop ro.build.version.release'
+        ret = execShell(cmd)
+        if 'd' in ret.keys():
+            logging.info('android version '+ret.get('d'))
+            return ret.get('d')
+
+    def getDevicePkgs(self):
+        ret = execShell(self._adb + ' shell pm list packages')
+        pkgs = []
+        if 'e' not in ret.keys():
+            dt = ret.get('d').split('\n')
+            for p in dt:
+                if p:
+                    pkgs.append(p.split(':')[1])
+        else:
+            logging.error(ret.get('e'))
+        return pkgs
+    
+    def checkOnline(self, deviceid=''):
+        devices = execShell('adb devices -l').get('d').split('\n')
+        ret = [d for d in devices if d.find('device ') != -1]
+        dids = [d.split()[0] for d in ret]
+        if deviceid:
+            if deviceid in dids:
+                return True
+            else:
+                print('Device id error')
+                print(execShell('adb devices -l').get('d'))
+                return False
+        else:
+            if len(dids) == 0:
+                print('No device')
+                return False
+            elif len(dids) == 1:
+                return True
+            elif len(dids) > 1:
+                print('More than one device, please set -s deviceid')
+                return False
+
+    def isDexExist(self, apk):
+        #系统app将dex存在其他位置，也可能不存在dex
+        zipf = zipfile.ZipFile(apk)
+        if 'classes.dex' in zipf.namelist():
+            return True
+        return False
+
+    def getVersionDevice(self, pkg):
+        cmd = self._adb + ' shell "dumpsys package '+pkg+'  | grep versionName" '
+        ret = execShell(cmd)
+        if ret.get('d'):
+            vs = ret.get('d').split('\n')
+            for v in vs:
+                if v:
+                    vv = v.split('=')
+                    if len(vv) == 2:
+                        return vv[1]
+        return False
+
+    def getVersionApk(self, pkg):
+        from inter.apkcookpy.lib.apk import APKCook
+        curdir = os.path.dirname(os.path.abspath(__file__))
+        try:
+            return APKCook(curdir+'/apps/'+pkg+'.apk').show('v')
+        except:
+            return False
+
+    def getVersionOnline(self, pkg):
+        return packageinfo_get_getpkg(pkg, True, True)
+
+    def downloadPkgList(self, pkgs):
+        '''
+        功能：批量下载APK
+        '''
+        logging.info('======Download======')
+
+        try:
+            os.mkdir(self._curdir+'/apps')
+        except:
+            pass
+        try:
+            os.mkdir(self._curdir+'/apps/tmp')
+        except:
+            pass
+        for p in pkgs:
+            logging.info('=='+p)
+            sp = self._curdir+'/apps/'+p
+            
+            needDownload = False
+            needPullfromDevice = False
+            
+            #存在APK时，判断是否有dex、是否过期
+            if os.path.isfile(sp+'.apk'):
+            
+                if self.isDexExist(sp+'.apk'):
+                    ver = self.getVersionApk(p)
+                    over = self.getVersionOnline(p)
+                    dver = self.getVersionDevice(p)
+                    
+                    if not ver:
+                        logging.error('get apk version error')
+                    else:
+                        #线上存在
+                        if over:
+                            tover = over.split(':')
+                            if len(tover) == 2:
+                                # 检查是否半年未更新，未维护APP直接跳过
+                                lastupdate = datetime.datetime.now() - datetime.timedelta(days = 180)
+                                lastupdate = lastupdate.strftime("%Y-%m-%d")
+                                if lastupdate > tover[1]:
+                                    logging.info('!!outdated')
+                                if ver < tover[0]:
+                                    execShell('rm '+sp+'.apk')
+                                    #设备是否存在最新版
+                                    if dver and dver >= tover[0]:
+                                        needPullfromDevice = True
+                                    else:
+                                        needDownload = True
+                                    logging.info('old version - online')
+                            
+                        else:
+                            if dver:
+                                if ver < dver:
+                                    execShell('rm '+sp+'.apk')
+                                    needPullfromDevice = True
+                                    logging.info('old version - device')
+                            else:
+                                #app已经不存在
+                                logging.error('app package name changed')
+                        
+                else:
+                    needPullfromDevice = True
+                    execShell('rm '+sp+'.apk')
+
+            else:
+                if p in self._devicepkg:
+                    needPullfromDevice = True
+                else:
+                    needDownload = True
+
+            #android9出现cdex
+            if needPullfromDevice and self._androidver >= '9'  and not os.path.isfile(self._curdir+'/inter/compact_dex_converters'):
+                logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34  and 保存到inter目录下')
+                return
+            #android7.0出现vdex
+            if needPullfromDevice and self._androidver >= '7'  and not os.path.isfile(self._curdir+'/inter/vdexExtractor'):
+                logging.error('please download vdexExtractor first: https://github.com/anestisb/vdexExtractor  and 保存到inter目录下')
+                return
+            #android6未处理，需要framework/baksmali
+
+            if needPullfromDevice:
+                cmd = self._adb + ' shell "pm path  '+p+'"'
+                ret = execShell(cmd)
+                if 'd' in ret.keys():
+                    apkpath = ret.get('d').split(':')[1].strip()
+                    logging.info('Pull from device')
+                    cmd = self._adb + ' pull '+apkpath+' '+sp
+                    ret = execShell(cmd)
+                    if 'd' in ret.keys():
+                        execShell('mv '+sp+' '+sp+'.apk')
+                        if not self.isDexExist(sp+'.apk') and self._androidver >= '7':
+                            self.getDexFromVdex(apkpath, sp)
+                    else:
+                        logging.error('pull error'+ret.get('e'))
+            if needDownload:
+                #下载
+                url = packageinfo_get_getpkg(p, False)
+                if url :
+                    logging.info('Downloading ')
+                    if self.downloadFile(url, sp+'.tmp'):
+                        ret = execShell('mv '+sp+'.tmp '+sp+'.apk')
+                    else:
+                        logging.info('Downlod error ')
+                else:
+                    logging.info('!!pkgname not exists')
+            
+        logging.info('====Download done====')
+
+    def installPkgList(self, pkgs):
+        self.downloadPkgList(pkgs)
+
+        logging.info('======install======')
+
+        #install monkey
+        if not self.getinstallmks():
+            logging.error('Install mks error')
+            return
+        installmcmd = self._adb + ' shell "su -c \' monkey -f /sdcard/install.mks 1000\'" '
+        installm = execShellDaemon(installmcmd)
+        ##
+
+        for p in pkgs:
+            logging.info('=='+p)
+            if p in self._devicepkg:
+                #logging.info('exists')
+                continue
+            
+            if not os.path.isfile(self._curdir+'/apps/'+p+'.apk'):
+                logging.error('apk file not exists')
+                continue
+
+            if installm.poll():
+                installm = execShellDaemon(installmcmd)
+            logging.info('Installing ')
+            cmd = self._adb + ' install '+self._curdir+'/apps/'+p+'.apk'
+            ret = execShell(cmd)
+            if 'e' in ret.keys():
+                logging.error(ret.get('e'))
+            else:
+                logging.info('Install success')
+
+        #清理monkey     
+        installm.terminate()
+        time.sleep(1)
+        self.killMonkey()
+
+        logging.info('======Install done======')
+
+    def uninstallPkg(self, pkgs):
+        for p in pkgs:
+            logging.info('Uninstalling '+p)
+            if p in self._devicepkg:
+                # always return true
+                cmd = self._adb + '  shell pm  uninstall '+p
+                ret = execShell(cmd)
+                if ret.get('d'):
+                    logging.info('Uninstall succ')
+                else:
+                    logging.error('Uninstall error')
+                
+            else:
+                logging.error("not installed ")
+
+    def downloadFile(self, url, savepath):
+        try:
+            urllib.request.urlretrieve(url, savepath)
+            return True
+        except Exception as e:
+            logging.info(str(e))
+            return False
+
+    def getDexFromVdex(self, path, sp):
+        d = os.path.dirname(path)
+        n = os.path.basename(d)+'.vdex'
+        dt = d+'/oat/arm/'+n
+        # pull vdex
+        cmd = self._adb + ' pull '+dt+' '+sp
+        ret = execShell(cmd)
+        #print(ret)
+        if 'e' in ret.keys():
+            dt = d+'/oat/arm64/'+n
+            cmd = self._adb + ' pull '+dt+' '+sp+'.vdex'
+            ret = execShell(cmd)
+        if os.path.isfile(sp+'.vdex'):
+            # android pie 9, multi dex
+            # convert to cdex
+            cmd = self._curdir+'/inter/vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+self._curdir+'/apps/tmp'
+            ret = execShell(cmd)
+            pkg = os.path.basename(sp)
+            cdex = False
+            for f in os.listdir(self._curdir+'/apps/tmp'):
+                if pkg+'_classes' in f and '.cdex' in f:
+                    cdex = True
+                    # cdex to dex
+                    cmd = self._curdir+'/inter/compact_dex_converters  '+self._curdir+'/apps/tmp/'+f
+                    ret = execShell(cmd)
+
+            zipf = zipfile.ZipFile(sp+'.apk', 'a')
+            for f in os.listdir(self._curdir+'/apps/tmp'):
+                if cdex and '.new' in f and pkg+'_classes' in f:
+                    # com.miui.fm_classes.cdex.new
+                    zipf.write(self._curdir+'/apps/tmp/'+f, f.split('_')[1].split('.')[0]+'.dex')
+
+                elif not cdex and '.dex' in f and pkg+'_classes' in f:
+                    # com.miui.fm_classes.dex
+                    zipf.write(self._curdir+'/apps/tmp/'+f, f.split('_')[1])
+            zipf.close()
+
+            os.remove(sp+'.vdex')
+            for f in os.listdir(self._curdir+'/apps/tmp'):
+                os.remove(self._curdir+'/apps/tmp/'+f)
+            
+        else:
+            logging.error('dex and vdex not exist')
+
+    def killMonkey(self):
+        logging.info('Clean monkey')
+        cmd = self._adb + ' shell "ps -A | grep com.android.commands.monkey" '
+        ret = execShell(cmd)
+        if 'd' in ret.keys():
+            data = ret.get('d').split('\n')
+            for d in data:
+                tmp = d.split()
+                if len(tmp) == 9 and tmp[8] == 'com.android.commands.monkey':
+                    cmd = self._adb + ' shell "su -c \' kill -9 '+tmp[1]+'\' "'
+                    ret = execShell(cmd)
+                    if 'e' in ret.keys():
+                        logging.info(ret.get('e'))
+
+        logging.info('Clean monkey done')
+    
+    def getinstallmks(self):
+        #部分机型adb安装app需要手动确认
+        out = '''
+        count=100
+        speed=1.0
+        start data >>
+
+        DispatchPointer(10000, 10000, 0, xpoint, ypoint, 0, 0, 0, 0, 0, 0, 0)
+        DispatchPointer(10000, 10000, 1, xpoint, ypoint, 0, 0, 0, 0, 0, 0, 0)
+        UserWait(7000)
+        '''
+        ret = execShell(self._adb+' shell wm size')
+        if 'e' in ret.keys():
+            logging.error(ret.get('e'))
+            return False
+        #Physical size: 1080x1920
+        tmp = ret.get('d')
+        tmp = tmp.split(': ')
+        tmp = tmp[1]
+        tmp = tmp.split('x')
+        width = int(tmp[0])
+        height = int(tmp[1])
+        out = out.replace('xpoint', str(int(width/4)))
+        out = out.replace('ypoint', str(height - 150))
+        
+        ret = execShell(self._adb+' shell "echo \' '+out+'\' >/sdcard/install.mks"')
+        if 'e' in ret.keys():
+            logging.error(ret.get('e'))
+            return False
+
+        return True
+
+    def getPermissionPid(self):
+        # miui部分机型适用
+        p = 'com.lbe.security.miui:ui'
+        tpcmd = self._adb + ' shell "ps -A | grep '+p+'" '
+        ret = execShell(tpcmd)
+        if 'd' in ret.keys():
+            data = ret.get('d').split('\n')
+            for d in data:
+                tmp = d.split()
+                if len(tmp) == 9 and tmp[8] == p:
+                    return tmp[1]
+        return ''
+
+
+##########end AppStarter#########
+
+def getPkgListInternet(pkg):
+    return packageinfo_get_getpkg(pkg, True)
+
+def getPkgList(pkg):
+    #包名或文件名
+    if os.path.isfile(pkg):
+        try:
+            with open(pkg, 'r') as f:
+                pkgs = f.read().split('\n')
+        except Exception as e:
+            logging.info(str(e))
+            pkgs = []
+    elif pkg:
+        pkgs = pkg.split(',')
+    out = []
+    for p in pkgs:
+        if p:
+            out.append(p.strip())
+    return out
+
+def getExport(pkg):
+    p = []
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    if os.path.isfile(pkg) and '.apk' in pkg:
+        p.append(pkg)
+    elif os.path.isfile(curdir+'/apps/'+pkg+'.apk'):
+        p.append(curdir+'/apps/'+pkg+'.apk')
+    elif os.path.isfile(pkg):
+        pp = getPkgList(pkg)
+        for t in pp:
+            p.append(curdir+'/apps/'+t+'.apk')
+
+    for pp in p:
+        try:
+            from inter.apkcookpy.lib.apk import APKCook
+            APKCook(pp).show()
+        except:
+            logging.error('=error '+pp)
+
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Android APP分析辅助工具', formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog='''使用示例:(pkglist.txt中每行一个包名)
+    python run.py -m pkglist.txt   批量monkey测试APP
+    python run.py -m com.xiaomi.smarthome   测试米家APP
+    python run.py -m 'com.xiaomi.smarthome, com.xiaomi.youpin'  测试米家和有品
+    python run.py -m -a pkglist.txt   批量monkey测试APP, 且测试没有导出的组件
+
+    python run.py -i pkglist.txt -s e46bc20a   电脑连接多个手机时需指定ID, adb devices获取手机ID
+
+    python run.py -i pkglist.txt   批量安装APP
+    python run.py -i com.xiaomi.smarthome   安装米家APP
+
+    python run.py -e com.xiaomi.smarthome   查看米家APP导出组件
+    python run.py -e /path/to/smarthome.apk   查看米家APP导出组件
+    python run.py -e pkglist.txt   查看米家APP导出组件
+
+    python run.py -l com.xiaomi.smarthome   搜索相同开发者APP
+    python run.py -l com.xiaomi   搜索类似包名的APP
+    ''')
+    parser.add_argument("-m", "--monkey", type=str, help="monkey测试")
+    parser.add_argument("-a", "--startall", action="store_true", help="启动所有组件(包括不导出的)")
+    parser.add_argument("-i", "--install", type=str, help="批量安装")
+    parser.add_argument("-u", "--uninstall", type=str, help="批量卸载")
+    parser.add_argument("-d", "--download", type=str, help="批量下载")
+    parser.add_argument("-s", "--deviceid", type=str, help="设备ID")
+    parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
+    parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
+    parser.add_argument("-l", "--lists", type=str, help="搜索包名相关APP")    
+
+    if sys.version_info.major != 3:
+        print('Run with python3')
+        sys.exit()
+
+    args = parser.parse_args()
+    monkey = args.monkey
+    startall = args.startall
+    install = args.install
+    uninstall = args.uninstall
+    lists = args.lists
+    download = args.download
+    deviceid = args.deviceid
+    clean = args.clean
+    export = args.export
+
+
+    try:
+        if monkey:
+            appstarter = AppStarter(deviceid)
+            appstarter.monkey(monkey, startall)
+        
+        elif install:
+            appstarter = AppStarter(deviceid)
+            appstarter.installPkgList(getPkgList(install))
+
+        elif uninstall:
+            appstarter = AppStarter(deviceid)
+            appstarter.uninstallPkg(getPkgList(uninstall))
+
+        elif download:
+            appstarter = AppStarter(deviceid)
+            appstarter.downloadPkgList(getPkgList(download))
+
+        elif clean:
+            appstarter = AppStarter(deviceid)
+            appstarter.killMonkey()
+        
+        elif export:
+            getExport(export)
+
+        elif lists:
+            print(getPkgListInternet(lists))
+
+        else:
+            parser.print_help()
+    except KeyboardInterrupt:
+        logging.info('Ctrl+C')
+        if appstarter:
+            appstarter.killMonkey()
