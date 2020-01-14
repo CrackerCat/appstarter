@@ -26,7 +26,7 @@ def execShell(cmd, t=120):
     功能：前台运行shell命令，阻塞
     参数：shell命令
     返回：成功返回{'d': DATA}，失败返回{'e': DATA}
-    #不同手机执行命令返回标准不一样
+    #不同手机执行成功/失败返回值不一致，可使用'ssss' in str(ret)方式判断
     '''
     ret = {}
     try:
@@ -252,7 +252,7 @@ class AppStarter(object):
             cmd = self._adb + ' shell ls  /data/local/tmp/frida'
             ret = execShell(cmd)
             
-            if 'd' in ret.keys() and 'No such file' in ret.get('d') :
+            if 'No such file' in str(ret) :
                 frida = self._dirinter+'frida'
                 if not os.path.isfile(frida):
                     logging.error('请配置frida环境(下载frida-arm-server, 重命名frida，放在inter目录)')
@@ -384,13 +384,14 @@ class AppStarter(object):
             vdextool = 'vdexExtractor32'
         cmd = self._adb + ' shell ls /data/local/tmp/'+vdextool
         ret = execShell(cmd)
-        if 'd' in ret.keys() and 'No such file' in ret.get('d') :
+        if 'No such file' in str(ret):
             logging.info('从android7+ 手机下载app，需要vdexExtractor。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
             if not os.path.isfile(self._dirinter+vdextool): 
                 logging.error('先下载vdexExtractor 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存compact_dex_converters到inter目录下')
             else:
                 cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
                 ret = execShell(cmd)
+                print(ret)
                 if 'd' in ret.keys():
                     logging.info('push vdexExtractor success')
                 cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+vdextool+' \' " '
@@ -440,7 +441,7 @@ class AppStarter(object):
                                 if ver != dver:
                                     os.remove(sp+'.apk')
                                     needPullfromDevice = True
-                                    logging.info('old version - device')
+                                    logging.info('version not same - device')
                             else:
                                 #app已经不存在
                                 logging.error('app package name changed')
@@ -570,29 +571,57 @@ class AppStarter(object):
         dt = d+'/oat/arm/'+n
         cmd = self._adb + ' shell ls  '+d+'/oat/arm/'+n
         ret = execShell(cmd)
-        if 'd' in ret.keys() and 'No such file' in ret.get('d') :
+        if 'No such file' in str(ret) :
             cmd = self._adb + ' shell ls  '+d+'/oat/arm64/'+n
             ret1 = execShell(cmd)
-            if 'd' in ret1.keys() and 'No such file' in ret1.get('d') :
+            if 'No such file' not in str(ret1):
                 dt = d+'/oat/arm64/'+n
+            else:
+                logging.error('dex and vdex not exist')
+                return
         
         #在手机上转换，跨平台
-        cmd = self._adb + ' shell  '+vdextool+'  -f -i  '+dt+' -o /data/local/tmp/'
+        logging.info('using vdexExtractor')
+        cmd = self._adb + ' shell  mkdir /data/local/tmp/appstarter'
         ret = execShell(cmd)
-        cmd = self._adb + ' shell ls  /data/local/tmp/'+os.path.basename(d)+'_classes.dex'
+        cmd = self._adb + ' shell  /data/local/tmp/'+vdextool+'  -f -i  '+dt+' -o /data/local/tmp/appstarter/'
         ret = execShell(cmd)
-        if 'd' in ret.keys() and not 'No such file' in ret.get('d') :
-            #pull
-            cmd = self._adb + ' pull  /data/local/tmp/'+os.path.basename(d)+'_classes.dex '+sp+'.dex'
-            ret = execShell(cmd)
-            if os.path.isfile(sp+'.dex'):
-                zipf = zipfile.ZipFile(sp+'.apk', 'a')
-                zipf.write(sp+'.dex', 'classes.dex')
-                zipf.close()
+        cmd = self._adb + ' pull  /data/local/tmp/appstarter/ '+self._dirappstmp
+        ret = execShell(cmd)
+        cmd = self._adb + ' rm -f  /data/local/tmp/appstarter/* '
+        ret = execShell(cmd)
 
-                os.remove(sp+'.dex')
-                cmd = self._adb + ' shell rm  /data/local/tmp/'+os.path.basename(d)+'_classes.dex'
-                ret = execShell(cmd)
+        cdex = False
+        for f in os.listdir(self._dirappstmp+'appstarter'):
+            if os.path.basename(d)+'_classes' in f and '.cdex' in f:
+                cdex = True
+                # cdex to dex
+                if platform.system() == 'Linux' and os.path.isfile(self._dirinter+'compact_dex_converters'):
+                    logging.info('using compact_dex_converters')
+                    cmd = self._dirinter+'compact_dex_converters  '+os.path.join(self._dirappstmp+'appstarter', f)
+                    ret = execShell(cmd)
+                else:
+                    logging.error('use linux to covert cdex')
+        if not cdex:
+            logging.error('vdex to cdex error')
+
+        zipf = zipfile.ZipFile(sp+'.apk', 'a')
+        #多个dex
+        ndex = False
+        for f in os.listdir(self._dirappstmp+'appstarter'):
+            if cdex and '.new' in f and os.path.basename(d)+'_classes' in f:
+                # com.miui.fm_classes.cdex.new
+                zipf.write(os.path.join(self._dirappstmp+'appstarter', f), f.split('_')[1].split('.')[0]+'.dex')
+                ndex = True
+
+            elif not cdex and '.dex' in f and os.path.basename(d)+'_classes' in f:
+                # com.miui.fm_classes.dex
+                zipf.write(os.path.join(self._dirappstmp+'appstarter', f), f.split('_')[1])
+        zipf.close()
+        if not ndex:
+            logging.error('cdex to dex error, 目前cdex仅支持linux系统。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
+        logging.info('assemble apk done')
+        shutil.rmtree(self._dirappstmp+'appstarter')
 
         # # pull vdex, 在PC上转换
         # cmd = self._adb + ' pull '+dt+' '+sp+'.vdex'
@@ -779,8 +808,8 @@ if __name__ == '__main__':
     if sys.version_info.major != 3:
         print('Run with python3')
         sys.exit()
-    if platform.system() != 'Linux':
-        print('work better with linux')
+    # if platform.system() != 'Linux':
+    #     print('work better with linux')
 
     args = parser.parse_args()
     monkey = args.monkey
