@@ -3,7 +3,8 @@
 - 支持MIUI系统APP及线上APP
 
 # 使用
-- Usage: python3 appstarter.py -h
+- python3 appstarter.py -h
+- python3 appstarter.py -e com.xiaomi.smarthome 获取米家APP导出组件
 - 需要配置PC及手机frida环境
 - 需要开启USB调试、USB安装、USB调试(安全设置)
 - 配置手机代理到mitmproxy，可发现安全漏洞
