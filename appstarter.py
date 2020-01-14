@@ -1,6 +1,6 @@
 #coding: utf-8
 
-import os, subprocess, sys
+import os, subprocess, sys, platform
 import threading, time, datetime
 import logging, argparse
 from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
@@ -289,7 +289,7 @@ class AppStarter(object):
         cmd = self._adb + ' shell getprop ro.build.version.release'
         ret = execShell(cmd)
         if 'd' in ret.keys():
-            logging.info('android version '+ret.get('d'))
+            logging.info('android version '+ret.get('d').rstrip('\n'))
             return ret.get('d').rstrip('\n')
 
     def getDevicePkgs(self):
@@ -368,6 +368,36 @@ class AppStarter(object):
             os.mkdir(self._dirappstmp)
         except:
             pass
+            
+        islinux = platform.system() == 'Linux'
+        #android9出现cdex
+        if islinux  and self._androidver >= '9'  and not os.path.isfile(self._dirinter+'compact_dex_converters'):
+            logging.error('先下载cdex convertor 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存compact_dex_converters到inter目录下')
+            #return
+        if not islinux and self._androidver >= '9':
+            logging.error('从android9 手机下载app，仅支持linux系统。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
+        #android7.0出现vdex，在手机上执行转换
+        vdextool = 'vdexExtractor64'
+        cmd = self._adb + ' shell getprop ro.product.cpu.abi'
+        ret = execShell(cmd)
+        if 'd' in ret.keys() and 'arm64' not in ret.get('d'):
+            vdextool = 'vdexExtractor32'
+        cmd = self._adb + ' shell ls /data/local/tmp/'+vdextool
+        ret = execShell(cmd)
+        if 'd' in ret.keys() and 'No such file' in ret.get('d') :
+            logging.info('从android7+ 手机下载app，需要vdexExtractor。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
+            if not os.path.isfile(self._dirinter+vdextool): 
+                logging.error('先下载vdexExtractor 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存compact_dex_converters到inter目录下')
+            else:
+                cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
+                ret = execShell(cmd)
+                if 'd' in ret.keys():
+                    logging.info('push vdexExtractor success')
+                cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+vdextool+' \' " '
+                ret = execShell(cmd)
+
+        #android6未处理odex，需要framework/baksmali
+
         for p in pkgs:
             logging.info('=='+p)
             sp = self._dirapps+p
@@ -396,7 +426,7 @@ class AppStarter(object):
                                 if lastupdate > tover[1]:
                                     logging.info('!!outdated')
                                 if ver < tover[0]:
-                                    execShell('rm '+sp+'.apk')
+                                    os.remove(sp+'.apk')
                                     #设备是否存在最新版
                                     if dver and dver >= tover[0]:
                                         needPullfromDevice = True
@@ -406,8 +436,9 @@ class AppStarter(object):
                             
                         else:
                             if dver:
-                                if ver < dver:
-                                    execShell('rm '+sp+'.apk')
+                                #切换手机时，版本可高可低
+                                if ver != dver:
+                                    os.remove(sp+'.apk')
                                     needPullfromDevice = True
                                     logging.info('old version - device')
                             else:
@@ -416,7 +447,7 @@ class AppStarter(object):
                         
                 else:
                     needPullfromDevice = True
-                    execShell('rm '+sp+'.apk')
+                    os.remove(sp+'.apk')
 
             else:
                 if p in self._devicepkg:
@@ -424,20 +455,10 @@ class AppStarter(object):
                 else:
                     needDownload = True
 
-            #android9出现cdex
-            if needPullfromDevice and self._androidver >= '9'  and not os.path.isfile(self._dirinter+'compact_dex_converters'):
-                logging.error('please download cdex convertor first: https://pan.mioffice.cn:443/link/AEB39658B994645AE544E6C13730CD34  and 保存到inter目录下')
-                return
-            #android7.0出现vdex
-            if needPullfromDevice and self._androidver >= '7'  and not os.path.isfile(self._dirinter+'vdexExtractor'):
-                logging.error('please download vdexExtractor first: https://github.com/anestisb/vdexExtractor  and 保存到inter目录下')
-                return
-            #android6未处理，需要framework/baksmali
-
             if needPullfromDevice:
                 cmd = self._adb + ' shell "pm path  '+p+'"'
                 ret = execShell(cmd)
-                if 'd' in ret.keys():
+                if 'd' in ret.keys() and ret.get('d'):
                     apkpath = ret.get('d').split(':')[1].strip()
                     logging.info('Pull from device')
                     cmd = self._adb + ' pull '+apkpath+' '+sp
@@ -445,9 +466,11 @@ class AppStarter(object):
                     if 'd' in ret.keys():
                         shutil.move(sp, sp+'.apk')
                         if not self.isDexExist(sp+'.apk') and self._androidver >= '7':
-                            self.getDexFromVdex(apkpath, sp)
+                            self.assembleAPP(apkpath, sp, vdextool)
                     else:
                         logging.error('pull error'+ret.get('e'))
+                else:
+                    logging.error('device has no '+p)
             if needDownload:
                 #下载
                 url = packageinfo_get_getpkg(p, False)
@@ -541,49 +564,70 @@ class AppStarter(object):
             logging.info(str(e))
             return False
 
-    def getDexFromVdex(self, path, sp):
+    def assembleAPP(self, path, sp, vdextool):
         d = os.path.dirname(path)
         n = os.path.basename(d)+'.vdex'
         dt = d+'/oat/arm/'+n
-        # pull vdex
-        cmd = self._adb + ' pull '+dt+' '+sp
+        cmd = self._adb + ' shell ls  '+d+'/oat/arm/'+n
         ret = execShell(cmd)
-        #print(ret)
-        if 'e' in ret.keys():
-            dt = d+'/oat/arm64/'+n
-            cmd = self._adb + ' pull '+dt+' '+sp+'.vdex'
+        if 'd' in ret.keys() and 'No such file' in ret.get('d') :
+            cmd = self._adb + ' shell ls  '+d+'/oat/arm64/'+n
+            ret1 = execShell(cmd)
+            if 'd' in ret1.keys() and 'No such file' in ret1.get('d') :
+                dt = d+'/oat/arm64/'+n
+        
+        #在手机上转换，跨平台
+        cmd = self._adb + ' shell  '+vdextool+'  -f -i  '+dt+' -o /data/local/tmp/'
+        ret = execShell(cmd)
+        cmd = self._adb + ' shell ls  /data/local/tmp/'+os.path.basename(d)+'_classes.dex'
+        ret = execShell(cmd)
+        if 'd' in ret.keys() and not 'No such file' in ret.get('d') :
+            #pull
+            cmd = self._adb + ' pull  /data/local/tmp/'+os.path.basename(d)+'_classes.dex '+sp+'.dex'
             ret = execShell(cmd)
-        if os.path.isfile(sp+'.vdex'):
-            # android pie 9, multi dex
-            # convert to cdex
-            cmd = self._dirinter+'vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+self._dirappstmp
-            ret = execShell(cmd)
-            pkg = os.path.basename(sp)
-            cdex = False
-            for f in os.listdir(self._dirappstmp):
-                if pkg+'_classes' in f and '.cdex' in f:
-                    cdex = True
-                    # cdex to dex
-                    cmd = self._dirinter+'compact_dex_converters  '+self._dirappstmp+f
-                    ret = execShell(cmd)
+            if os.path.isfile(sp+'.dex'):
+                zipf = zipfile.ZipFile(sp+'.apk', 'a')
+                zipf.write(sp+'.dex', 'classes.dex')
+                zipf.close()
 
-            zipf = zipfile.ZipFile(sp+'.apk', 'a')
-            for f in os.listdir(self._dirappstmp):
-                if cdex and '.new' in f and pkg+'_classes' in f:
-                    # com.miui.fm_classes.cdex.new
-                    zipf.write(self._dirappstmp+f, f.split('_')[1].split('.')[0]+'.dex')
+                os.remove(sp+'.dex')
+                cmd = self._adb + ' shell rm  /data/local/tmp/'+os.path.basename(d)+'_classes.dex'
+                ret = execShell(cmd)
 
-                elif not cdex and '.dex' in f and pkg+'_classes' in f:
-                    # com.miui.fm_classes.dex
-                    zipf.write(self._dirappstmp+f, f.split('_')[1])
-            zipf.close()
+        # # pull vdex, 在PC上转换
+        # cmd = self._adb + ' pull '+dt+' '+sp+'.vdex'
+        # ret = execShell(cmd)
+        # if os.path.isfile(sp+'.vdex'):
+        #     # android pie 9, multi dex
+        #     # convert to cdex
+        #     cmd = self._dirinter+'vdexExtractor  -f  -i '+sp+'.vdex '+' -o '+self._dirappstmp
+        #     ret = execShell(cmd)
+        #     pkg = os.path.basename(sp)
+        #     cdex = False
+        #     for f in os.listdir(self._dirappstmp):
+        #         if pkg+'_classes' in f and '.cdex' in f:
+        #             cdex = True
+        #             # cdex to dex
+        #             cmd = self._dirinter+'compact_dex_converters  '+self._dirappstmp+f
+        #             ret = execShell(cmd)
 
-            os.remove(sp+'.vdex')
-            for f in os.listdir(self._dirappstmp):
-                os.remove(self._dirappstmp+f)
+        #     zipf = zipfile.ZipFile(sp+'.apk', 'a')
+        #     for f in os.listdir(self._dirappstmp):
+        #         if cdex and '.new' in f and pkg+'_classes' in f:
+        #             # com.miui.fm_classes.cdex.new
+        #             zipf.write(self._dirappstmp+f, f.split('_')[1].split('.')[0]+'.dex')
+
+        #         elif not cdex and '.dex' in f and pkg+'_classes' in f:
+        #             # com.miui.fm_classes.dex
+        #             zipf.write(self._dirappstmp+f, f.split('_')[1])
+        #     zipf.close()
+
+        #     os.remove(sp+'.vdex')
+        #     for f in os.listdir(self._dirappstmp):
+        #         os.remove(self._dirappstmp+f)
             
-        else:
-            logging.error('dex and vdex not exist')
+        # else:
+        #     logging.error('dex and vdex not exist')
 
     def killMonkey(self):
         logging.info('Clean monkey')
@@ -603,10 +647,13 @@ class AppStarter(object):
 
     def suinstall(self, pkg):
         path = '/data/local/tmp/'+pkg+'.apk'
-        cmd = self._adb+' push '+self._dirapps+p+'.apk '+path
+        cmd = self._adb+' push '+self._dirapps+pkg+'.apk '+path
         execShell(cmd)
         cmd = self._adb+' shell "su -c \'pm install '+path+' \'"'
-        return execShell(cmd)
+        ret = execShell(cmd)
+        cmd = self._adb+' shell "rm '+path+'"'
+        execShell(cmd)
+        return ret
 
     def getinstallmks(self):
         #部分机型adb安装app需要手动确认
@@ -732,6 +779,8 @@ if __name__ == '__main__':
     if sys.version_info.major != 3:
         print('Run with python3')
         sys.exit()
+    if platform.system() != 'Linux':
+        print('work better with linux')
 
     args = parser.parse_args()
     monkey = args.monkey
