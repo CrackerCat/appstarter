@@ -384,8 +384,8 @@ class AppStarter(object):
             cmd = self._adb + ' shell ls /data/local/tmp/'+cdextool
             ret = execShell(cmd)
             if 'No such file' in str(ret):
-                logging.info('从android9+ 手机下载app，需要compact-dex-converter')
                 if not os.path.isfile(self._dirinter+cdextool): 
+                    logging.info('从android9+ 手机下载app，需要compact-dex-converter')
                     logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(cdextool))
                 else:
                     cmd = self._adb + ' push '+self._dirinter+cdextool+' /data/local/tmp/'
@@ -403,8 +403,8 @@ class AppStarter(object):
             cmd = self._adb + ' shell ls /data/local/tmp/'+vdextool
             ret = execShell(cmd)
             if 'No such file' in str(ret):
-                logging.info('从android7+ 手机下载app，需要vdexExtractor')
-                if not os.path.isfile(self._dirinter+vdextool): 
+                if not os.path.isfile(self._dirinter+vdextool):
+                    logging.info('从android7+ 手机下载app，需要vdexExtractor')
                     logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(vdextool))
                 else:
                     cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
