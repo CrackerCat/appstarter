@@ -476,8 +476,9 @@ class AppStarter(object):
             if needPullfromDevice:
                 cmd = self._adb + ' shell "pm path  '+p+'"'
                 ret = execShell(cmd)
+                # 可能返回多个APK
                 if 'd' in ret.keys() and ret.get('d'):
-                    apkpath = ret.get('d').split(':')[1].strip()
+                    apkpath = ret.get('d').split('\n')[0].split(':')[1]
                     logging.info('Pull from device')
                     cmd = self._adb + ' pull '+apkpath+' '+sp
                     ret = execShell(cmd)
@@ -486,7 +487,7 @@ class AppStarter(object):
                         if not self.isDexExist(sp+'.apk') and self._androidver >= '7':
                             self.assembleAPP(apkpath, sp, vdextool, cdextool)
                     else:
-                        logging.error('pull error'+ret.get('e'))
+                        logging.error('pull error'+ret.get('e')+apkpath)
                 else:
                     logging.error('device has no '+p)
             if needDownload:
@@ -605,7 +606,7 @@ class AppStarter(object):
         ret = execShell(cmd)
 
         # multi cdex?
-        cmd = self._adb + ' shell ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.cdex | wc'
+        cmd = self._adb + ' shell "ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.cdex | wc"'
         ret = execShell(cmd)
         count = 0
         if 'd' in ret.keys():
@@ -614,7 +615,7 @@ class AppStarter(object):
         for i in range(0, count):
             #cdex
             cdex = True
-            logging.info('exist cdex')
+            logging.info('using compact-dex-converter')
             t = str(i + 1)
             if t == '1':
                 t = ''
@@ -626,7 +627,7 @@ class AppStarter(object):
             cmd = self._adb + ' shell ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.dex'
             ret = execShell(cmd)
             if 'No such file' in str(ret):
-                logging.error('vdex to dex error')
+                logging.error('vdex to dex/cdex error')
 
         cmd = self._adb + ' pull  /data/local/tmp/appstarter/ '+self._dirappstmp
         ret = execShell(cmd)
