@@ -778,22 +778,22 @@ def getExport(pkg):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Android APP分析辅助工具', formatter_class=argparse.RawDescriptionHelpFormatter,
     epilog='''使用示例:(pkglist.txt中每行一个包名)
-    python run.py -m pkglist.txt   批量monkey测试APP
-    python run.py -m com.xiaomi.smarthome   测试米家APP
-    python run.py -m 'com.xiaomi.smarthome, com.xiaomi.youpin'  测试米家和有品
-    python run.py -m -a pkglist.txt   批量monkey测试APP, 且测试没有导出的组件
+    python appstarter.py -m pkglist.txt   批量monkey测试APP
+    python appstarter.py -m com.xiaomi.smarthome   测试米家APP
+    python appstarter.py -m 'com.xiaomi.smarthome, com.xiaomi.youpin'  测试米家和有品
+    python appstarter.py -m -a pkglist.txt   批量monkey测试APP, 且测试没有导出的组件
 
-    python run.py -i pkglist.txt -s e46bc20a   电脑连接多个手机时需指定ID, adb devices获取手机ID
+    python appstarter.py -i pkglist.txt -s e46bc20a   电脑连接多个手机时需指定ID, adb devices获取手机ID
 
-    python run.py -i pkglist.txt   批量安装APP
-    python run.py -i com.xiaomi.smarthome   安装米家APP
+    python appstarter.py -i pkglist.txt   批量安装APP
+    python appstarter.py -i com.xiaomi.smarthome   安装米家APP
 
-    python run.py -e com.xiaomi.smarthome   查看米家APP导出组件
-    python run.py -e /path/to/smarthome.apk   查看米家APP导出组件
-    python run.py -e pkglist.txt   查看米家APP导出组件
+    python appstarter.py -e com.xiaomi.smarthome   查看米家APP导出组件
+    python appstarter.py -e /path/to/smarthome.apk   查看米家APP导出组件
+    python appstarter.py -e pkglist.txt   查看米家APP导出组件
 
-    python run.py -l com.xiaomi.smarthome   搜索相同开发者APP
-    python run.py -l com.xiaomi   搜索类似包名的APP
+    python appstarter.py -l com.xiaomi.smarthome   搜索相同开发者APP
+    python appstarter.py -l com.xiaomi   搜索类似包名的APP
     ''')
     parser.add_argument("-m", "--monkey", type=str, help="monkey测试")
     parser.add_argument("-a", "--startall", action="store_true", help="启动所有组件(包括不导出的)")
