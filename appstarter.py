@@ -370,32 +370,49 @@ class AppStarter(object):
             pass
             
         islinux = platform.system() == 'Linux'
-        #android9出现cdex
-        if islinux  and self._androidver >= '9'  and not os.path.isfile(self._dirinter+'compact_dex_converters'):
-            logging.error('先下载cdex convertor 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存compact_dex_converters到inter目录下')
-            #return
-        if not islinux and self._androidver >= '9':
-            logging.error('从android9 手机下载app，仅支持linux系统。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
-        #android7.0出现vdex，在手机上执行转换
-        vdextool = 'vdexExtractor64'
+        arm64 = True
         cmd = self._adb + ' shell getprop ro.product.cpu.abi'
         ret = execShell(cmd)
         if 'd' in ret.keys() and 'arm64' not in ret.get('d'):
-            vdextool = 'vdexExtractor32'
-        cmd = self._adb + ' shell ls /data/local/tmp/'+vdextool
-        ret = execShell(cmd)
-        if 'No such file' in str(ret):
-            logging.info('从android7+ 手机下载app，需要vdexExtractor。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
-            if not os.path.isfile(self._dirinter+vdextool): 
-                logging.error('先下载vdexExtractor 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存compact_dex_converters到inter目录下')
-            else:
-                cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
-                ret = execShell(cmd)
-                print(ret)
-                if 'd' in ret.keys():
-                    logging.info('push vdexExtractor success')
-                cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+vdextool+' \' " '
-                ret = execShell(cmd)
+            arm64 = False
+
+        #android9出现cdex
+        if self._androidver >= '9':
+            cdextool = 'cdex_converter64'
+            if not arm64:
+                cdextool = 'cdex_converter32'
+            cmd = self._adb + ' shell ls /data/local/tmp/'+cdextool
+            ret = execShell(cmd)
+            if 'No such file' in str(ret):
+                logging.info('从android9+ 手机下载app，需要compact-dex-converter')
+                if not os.path.isfile(self._dirinter+cdextool): 
+                    logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(cdextool))
+                else:
+                    cmd = self._adb + ' push '+self._dirinter+cdextool+' /data/local/tmp/'
+                    ret = execShell(cmd)
+                    if 'd' in ret.keys():
+                        logging.info('push compact-dex-converter success')
+                    cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+cdextool+' \' " '
+                    ret = execShell(cmd)
+        
+        #android7.0出现vdex，在手机上执行转换
+        if self._androidver >= '7':
+            vdextool = 'vdexExtractor64'
+            if not arm64:
+                vdextool = 'vdexExtractor32'
+            cmd = self._adb + ' shell ls /data/local/tmp/'+vdextool
+            ret = execShell(cmd)
+            if 'No such file' in str(ret):
+                logging.info('从android7+ 手机下载app，需要vdexExtractor')
+                if not os.path.isfile(self._dirinter+vdextool): 
+                    logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(vdextool))
+                else:
+                    cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
+                    ret = execShell(cmd)
+                    if 'd' in ret.keys():
+                        logging.info('push vdexExtractor success')
+                    cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+vdextool+' \' " '
+                    ret = execShell(cmd)
 
         #android6未处理odex，需要framework/baksmali
 
@@ -467,7 +484,7 @@ class AppStarter(object):
                     if 'd' in ret.keys():
                         shutil.move(sp, sp+'.apk')
                         if not self.isDexExist(sp+'.apk') and self._androidver >= '7':
-                            self.assembleAPP(apkpath, sp, vdextool)
+                            self.assembleAPP(apkpath, sp, vdextool, cdextool)
                     else:
                         logging.error('pull error'+ret.get('e'))
                 else:
@@ -565,7 +582,7 @@ class AppStarter(object):
             logging.info(str(e))
             return False
 
-    def assembleAPP(self, path, sp, vdextool):
+    def assembleAPP(self, path, sp, vdextool, cdextool):
         d = os.path.dirname(path)
         n = os.path.basename(d)+'.vdex'
         dt = d+'/oat/arm/'+n
@@ -586,24 +603,49 @@ class AppStarter(object):
         ret = execShell(cmd)
         cmd = self._adb + ' shell  /data/local/tmp/'+vdextool+'  -f -i  '+dt+' -o /data/local/tmp/appstarter/'
         ret = execShell(cmd)
+
+        # multi cdex?
+        cmd = self._adb + ' shell ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.cdex | wc'
+        ret = execShell(cmd)
+        count = 0
+        if 'd' in ret.keys():
+            count = int(ret.get('d').rstrip('\n').split()[0])
+        cdex = False
+        for i in range(0, count):
+            #cdex
+            cdex = True
+            logging.info('exist cdex')
+            t = str(i + 1)
+            if t == '1':
+                t = ''
+            cmd = self._adb + ' shell  /data/local/tmp/'+cdextool+' /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes'+t+'.cdex'
+            ret = execShell(cmd)
+
+        if count == 0:
+            #no cdex
+            cmd = self._adb + ' shell ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.dex'
+            ret = execShell(cmd)
+            if 'No such file' in str(ret):
+                logging.error('vdex to dex error')
+
         cmd = self._adb + ' pull  /data/local/tmp/appstarter/ '+self._dirappstmp
         ret = execShell(cmd)
         cmd = self._adb + ' rm -f  /data/local/tmp/appstarter/* '
         ret = execShell(cmd)
 
-        cdex = False
-        for f in os.listdir(self._dirappstmp+'appstarter'):
-            if os.path.basename(d)+'_classes' in f and '.cdex' in f:
-                cdex = True
-                # cdex to dex
-                if platform.system() == 'Linux' and os.path.isfile(self._dirinter+'compact_dex_converters'):
-                    logging.info('using compact_dex_converters')
-                    cmd = self._dirinter+'compact_dex_converters  '+os.path.join(self._dirappstmp+'appstarter', f)
-                    ret = execShell(cmd)
-                else:
-                    logging.error('use linux to covert cdex')
-        if not cdex:
-            logging.error('vdex to cdex error')
+        # cdex = False
+        # for f in os.listdir(self._dirappstmp+'appstarter'):
+        #     if os.path.basename(d)+'_classes' in f and '.cdex' in f:
+        #         cdex = True                
+        #         # cdex to dex 在PC上转换
+        #         if platform.system() == 'Linux' and os.path.isfile(self._dirinter+'compact_dex_converters'):
+        #             logging.info('using compact_dex_converters')
+        #             cmd = self._dirinter+'compact_dex_converters  '+os.path.join(self._dirappstmp+'appstarter', f)
+        #             ret = execShell(cmd)
+        #         else:
+        #             logging.error('use linux to covert cdex')
+        # if not cdex:
+        #     logging.error('vdex to cdex error')
 
         zipf = zipfile.ZipFile(sp+'.apk', 'a')
         #多个dex
@@ -618,8 +660,8 @@ class AppStarter(object):
                 # com.miui.fm_classes.dex
                 zipf.write(os.path.join(self._dirappstmp+'appstarter', f), f.split('_')[1])
         zipf.close()
-        if not ndex:
-            logging.error('cdex to dex error, 目前cdex仅支持linux系统。详情https://github.com/anestisb/vdexExtractor#compact-dex-converter')
+        if not ndex and cdex:
+            logging.error('cdex to dex error')
         logging.info('assemble apk done')
         shutil.rmtree(self._dirappstmp+'appstarter')
 
