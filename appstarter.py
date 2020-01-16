@@ -371,7 +371,7 @@ class AppStarter(object):
             
         islinux = platform.system() == 'Linux'
         arm64 = True
-        cmd = self._adb + ' shell getprop ro.product.cpu.abi'
+        cmd = self._adb + ' shell "getprop ro.product.cpu.abi"'
         ret = execShell(cmd)
         if 'd' in ret.keys() and 'arm64' not in ret.get('d'):
             arm64 = False
@@ -381,7 +381,7 @@ class AppStarter(object):
             cdextool = 'cdex_converter64'
             if not arm64:
                 cdextool = 'cdex_converter32'
-            cmd = self._adb + ' shell ls /data/local/tmp/'+cdextool
+            cmd = self._adb + ' shell "ls /data/local/tmp/'+cdextool+' "'
             ret = execShell(cmd)
             if 'No such file' in str(ret):
                 if not os.path.isfile(self._dirinter+cdextool): 
@@ -400,7 +400,7 @@ class AppStarter(object):
             vdextool = 'vdexExtractor64'
             if not arm64:
                 vdextool = 'vdexExtractor32'
-            cmd = self._adb + ' shell ls /data/local/tmp/'+vdextool
+            cmd = self._adb + ' shell "ls /data/local/tmp/'+vdextool+' "'
             ret = execShell(cmd)
             if 'No such file' in str(ret):
                 if not os.path.isfile(self._dirinter+vdextool):
@@ -587,10 +587,10 @@ class AppStarter(object):
         d = os.path.dirname(path)
         n = os.path.basename(d)+'.vdex'
         dt = d+'/oat/arm/'+n
-        cmd = self._adb + ' shell ls  '+d+'/oat/arm/'+n
+        cmd = self._adb + ' shell "ls  '+d+'/oat/arm/'+n+' "'
         ret = execShell(cmd)
         if 'No such file' in str(ret) :
-            cmd = self._adb + ' shell ls  '+d+'/oat/arm64/'+n
+            cmd = self._adb + ' shell "ls  '+d+'/oat/arm64/'+n+' "'
             ret1 = execShell(cmd)
             if 'No such file' not in str(ret1):
                 dt = d+'/oat/arm64/'+n
@@ -600,9 +600,9 @@ class AppStarter(object):
         
         #在手机上转换，跨平台
         logging.info('using vdexExtractor')
-        cmd = self._adb + ' shell  mkdir /data/local/tmp/appstarter'
+        cmd = self._adb + ' shell  "mkdir /data/local/tmp/appstarter"'
         ret = execShell(cmd)
-        cmd = self._adb + ' shell  /data/local/tmp/'+vdextool+'  -f -i  '+dt+' -o /data/local/tmp/appstarter/'
+        cmd = self._adb + ' shell  "/data/local/tmp/'+vdextool+'  -f -i  '+dt+' -o /data/local/tmp/appstarter/"'
         ret = execShell(cmd)
 
         # multi cdex?
@@ -619,19 +619,19 @@ class AppStarter(object):
             t = str(i + 1)
             if t == '1':
                 t = ''
-            cmd = self._adb + ' shell  /data/local/tmp/'+cdextool+' /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes'+t+'.cdex'
+            cmd = self._adb + ' shell  "/data/local/tmp/'+cdextool+' /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes'+t+'.cdex"'
             ret = execShell(cmd)
 
         if count == 0:
             #no cdex
-            cmd = self._adb + ' shell ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.dex'
+            cmd = self._adb + ' shell "ls /data/local/tmp/appstarter/'+os.path.basename(d)+'_classes*.dex"'
             ret = execShell(cmd)
             if 'No such file' in str(ret):
                 logging.error('vdex to dex/cdex error')
 
         cmd = self._adb + ' pull  /data/local/tmp/appstarter/ '+self._dirappstmp
         ret = execShell(cmd)
-        cmd = self._adb + ' rm -f  /data/local/tmp/appstarter/* '
+        cmd = self._adb + ' shell  "rm -f  /data/local/tmp/appstarter/* "'
         ret = execShell(cmd)
 
         # cdex = False
