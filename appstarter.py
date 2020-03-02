@@ -1,6 +1,6 @@
 #coding: utf-8
 
-import os, subprocess, sys, platform
+import os, subprocess, sys, platform,re
 import threading, time, datetime
 import logging, argparse
 from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
@@ -74,9 +74,10 @@ class AppStarter(object):
         if not self.isPhoneRooted():
             print('[!]phone not rooted, may not work well')
 
-    def monkey(self, pkg, startallcomponent):
+    def monkey(self, pkg, startallcomponent, usefrida, auto):
         pkgs = getPkgList(pkg)
-        self.installPkgList(pkgs)
+        if auto:
+            self.installPkgList(pkgs)
         self._devicepkg = self.getDevicePkgs()
         from inter.apkcookpy.lib.apk import APKCook
         logging.info('=====start monkey=====')
@@ -91,7 +92,10 @@ class AppStarter(object):
         cmd = self._adb + ' shell  "mkdir /sdcard/monkeylogs"'
         ret = execShell(cmd)
         
-        if not self.setupFrida():
+        self.pushCert()
+        self.detectWifiProxy()
+
+        if usefrida and not self.setupFrida():
             return
 
         # 权限申请hook
@@ -243,6 +247,58 @@ class AppStarter(object):
             time.sleep(1)
         cmd = self._adb + ' shell "am force-stop '+pkg+' " '
         execShell(cmd)
+
+    def pushCert(self):
+        certname = 'c8750f0d.0'
+        out = execShell(self._adb+' push inter/'+certname+' /data/local/tmp/')
+        if '1 file pushed' not in str(out):
+            logging.error('cert push error')
+        
+
+        #不同shell返回不一样
+        out = execShell(self._adb+' shell "ls -Z /system/etc/security/cacerts | head -n1"')
+        con = out.get('d')
+        if con:
+            conc = con.split(' ')
+            for c in conc:
+                if 'u:' in c:
+                    con = c
+            #print(con)
+        if not con:
+            logging.error('con error')
+            print(out)
+            return
+
+        #adb shell是否默认root权限
+        if '(root)' not in str(execShell(self._adb+' shell id')):
+            out = ""
+            out += str(execShell(self._adb+" shell su -c 'setenforce 0 '"))
+            #print("adb no default root, may not work well')
+            out += str(execShell(self._adb+" shell su -c 'umount /system/etc/security/cacerts'"))
+            out += str(execShell(self._adb+" shell su -c 'cp -pR /system/etc/security/cacerts /data/local/tmp/'"))
+            out += str(execShell(self._adb+" shell su -c 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
+            out += str(execShell(self._adb+" shell su -c 'chmod -R 755 /data/local/tmp/cacerts'"))
+            out += str(execShell(self._adb+" shell su -c 'chcon -R "+con+" /data/local/tmp/cacerts'"))
+            out += str(execShell(self._adb+" shell su -c 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
+        else:
+            #子命令使用单引号，否则在红米shell可能出问题
+            out = execShell(self._adb+" shell 'umount /system/etc/security/cacerts;cp -pR /system/etc/security/cacerts /data/local/tmp/;cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/;chmod -R 755 /data/local/tmp/cacerts;chcon -R "+con+" /data/local/tmp/cacerts;mount /data/local/tmp/cacerts /system/etc/security/cacerts'")
+
+        out1 = execShell(self._adb+' shell mount')
+        if "/system/etc/security/cacerts" not in str(out1):
+            logging.error('cert '+out)
+        else:
+            logging.info('证书导入成功')
+            
+    def detectWifiProxy(self):
+        out = execShell(self._adb+' shell \'cat /data/misc/wifi/WifiConfigStore.xml | grep ProxyHost\'')
+        if "{'d': ''}" == str(out):
+            logging.info('请手动设置WiFi代理')
+        elif out.get('d'):
+            proxy = re.findall(r'.*?(\d+\.\d+\.\d+\.\d+).*', out.get('d').strip())
+            if proxy:
+                logging.info('代理：'+proxy[0])
+        #print(out)
 
     def setupFrida(self):
         cmd = self._adb + ' shell  "ps -A | grep frida"'
@@ -819,12 +875,13 @@ def getExport(pkg):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Android APP分析辅助工具', formatter_class=argparse.RawDescriptionHelpFormatter,
+    parser = argparse.ArgumentParser(description='Android APP批量启动工具', formatter_class=argparse.RawDescriptionHelpFormatter,
     epilog='''使用示例:(pkglist.txt中每行一个包名)
+    python appstarter.py -a -m pkglist.txt   自动下载-安装-monkey测试
     python appstarter.py -m pkglist.txt   批量monkey测试APP
     python appstarter.py -m com.xiaomi.smarthome   测试米家APP
     python appstarter.py -m 'com.xiaomi.smarthome, com.xiaomi.youpin'  测试米家和有品
-    python appstarter.py -m -a pkglist.txt   批量monkey测试APP, 且测试没有导出的组件
+    python appstarter.py -m --startall pkglist.txt   批量monkey测试APP, 且测试没有导出的组件
 
     python appstarter.py -i pkglist.txt -s e46bc20a   电脑连接多个手机时需指定ID, adb devices获取手机ID
 
@@ -838,15 +895,18 @@ if __name__ == '__main__':
     python appstarter.py -l com.xiaomi.smarthome   搜索相同开发者APP
     python appstarter.py -l com.xiaomi   搜索类似包名的APP
     ''')
+    parser.add_argument("-a", "--auto", action="store_true", help="自动下载-安装-monkey测试")
     parser.add_argument("-m", "--monkey", type=str, help="monkey测试")
-    parser.add_argument("-a", "--startall", action="store_true", help="启动所有组件(包括不导出的)")
+    parser.add_argument("--startall", action="store_true", help="启动所有组件(包括不导出的)")
+    parser.add_argument("--frida", action="store_true", help="使用frida") 
     parser.add_argument("-i", "--install", type=str, help="批量安装")
     parser.add_argument("-u", "--uninstall", type=str, help="批量卸载")
     parser.add_argument("-d", "--download", type=str, help="批量下载")
     parser.add_argument("-s", "--deviceid", type=str, help="设备ID")
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
     parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
-    parser.add_argument("-l", "--lists", type=str, help="搜索包名相关APP")    
+    parser.add_argument("-l", "--lists", type=str, help="搜索包名相关APP")
+    
 
     if sys.version_info.major != 3:
         print('Run with python3')
@@ -855,6 +915,7 @@ if __name__ == '__main__':
     #     print('work better with linux')
 
     args = parser.parse_args()
+    auto = args.auto
     monkey = args.monkey
     startall = args.startall
     install = args.install
@@ -864,12 +925,13 @@ if __name__ == '__main__':
     deviceid = args.deviceid
     clean = args.clean
     export = args.export
+    frida = args.frida
 
 
     try:
         if monkey:
             appstarter = AppStarter(deviceid)
-            appstarter.monkey(monkey, startall)
+            appstarter.monkey(monkey, startall, frida, auto)
         
         elif install:
             appstarter = AppStarter(deviceid)
