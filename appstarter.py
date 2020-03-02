@@ -291,13 +291,15 @@ class AppStarter(object):
             logging.info('证书导入成功')
             
     def detectWifiProxy(self):
-        out = execShell(self._adb+' shell \'cat /data/misc/wifi/WifiConfigStore.xml | grep ProxyHost\'')
-        if "{'d': ''}" == str(out):
-            logging.info('请手动设置WiFi代理')
-        elif out.get('d'):
-            proxy = re.findall(r'.*?(\d+\.\d+\.\d+\.\d+).*', out.get('d').strip())
-            if proxy:
-                logging.info('代理：'+proxy[0])
+        if self._androidver >= '8':
+            #android8之前/data/misc/wifi/wpa_supplicant.conf
+            out = execShell(self._adb+' shell \'cat /data/misc/wifi/WifiConfigStore.xml | grep ProxyHost\'')
+            if "{'d': ''}" == str(out):
+                logging.info('请手动设置WiFi代理')
+            elif out.get('d'):
+                proxy = re.findall(r'.*?(\d+\.\d+\.\d+\.\d+).*', out.get('d').strip())
+                if proxy:
+                    logging.info('代理：'+proxy[0])
         #print(out)
 
     def setupFrida(self):
