@@ -7,7 +7,7 @@ from inter.packageinfo_get import getpkg as packageinfo_get_getpkg
 import urllib.request
 import zipfile
 import shutil
-import
+import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 logging.basicConfig(level = logging.INFO, format='%(asctime)s - %(levelname)s [%(filename)s:%(lineno)d]: %(message)s')
