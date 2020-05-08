@@ -79,7 +79,7 @@ class AppStarter(object):
     def monkey(self, pkg, startallcomponent, usefrida, auto):
         pkgs = getPkgList(pkg)
         if auto:
-            self.installPkgList(pkgs)
+            self.installPkgList(pkgs, auto)
         self._devicepkg = self.getDevicePkgs()
         from inter.apkcookpy.lib.apk import APKCook
         logging.info('=====start monkey=====')
@@ -294,7 +294,7 @@ class AppStarter(object):
             
     def detectWifiProxy(self):
         if self._androidver >= '8':
-            #android8之前/data/misc/wifi/wpa_supplicant.conf
+            #android8之前/data/misc/wifi/wpa_supplicant.conf ///need root
             out = execShell(self._adb+' shell \'cat /data/misc/wifi/WifiConfigStore.xml | grep ProxyHost\'')
             if "{'d': ''}" == str(out):
                 logging.info('请手动设置WiFi代理')
@@ -414,7 +414,7 @@ class AppStarter(object):
     def getVersionOnline(self, pkg):
         return packageinfo_get_getpkg(pkg, True, True)
 
-    def downloadPkgList(self, pkgs):
+    def downloadPkgList(self, pkgs, auto=False):
         '''
         功能：批量下载APK
         '''
@@ -428,53 +428,53 @@ class AppStarter(object):
             os.mkdir(self._dirappstmp)
         except:
             pass
+
+        if not auto:
+            arm64 = True
+            cmd = self._adb + ' shell "getprop ro.product.cpu.abi"'
+            ret = execShell(cmd)
+            if 'd' in ret.keys() and 'arm64' not in ret.get('d'):
+                arm64 = False
+
+            #android9出现cdex
+            if self._androidver >= '9':
+                cdextool = 'cdex_converter64'
+                if not arm64:
+                    cdextool = 'cdex_converter32'
+                cmd = self._adb + ' shell "ls /data/local/tmp/'+cdextool+' "'
+                ret = execShell(cmd)
+                if 'No such file' in str(ret):
+                    if not os.path.isfile(self._dirinter+cdextool): 
+                        logging.info('从android9+ 手机下载app，需要compact-dex-converter')
+                        logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(cdextool))
+                    else:
+                        cmd = self._adb + ' push '+self._dirinter+cdextool+' /data/local/tmp/'
+                        ret = execShell(cmd)
+                        if 'd' in ret.keys():
+                            logging.info('push compact-dex-converter success')
+                        cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+cdextool+' \' " '
+                        ret = execShell(cmd)
             
-        islinux = platform.system() == 'Linux'
-        arm64 = True
-        cmd = self._adb + ' shell "getprop ro.product.cpu.abi"'
-        ret = execShell(cmd)
-        if 'd' in ret.keys() and 'arm64' not in ret.get('d'):
-            arm64 = False
+            #android7.0出现vdex，在手机上执行转换
+            if self._androidver >= '7':
+                vdextool = 'vdexExtractor64'
+                if not arm64:
+                    vdextool = 'vdexExtractor32'
+                cmd = self._adb + ' shell "ls /data/local/tmp/'+vdextool+' "'
+                ret = execShell(cmd)
+                if 'No such file' in str(ret):
+                    if not os.path.isfile(self._dirinter+vdextool):
+                        logging.info('从android7+ 手机下载app，需要vdexExtractor')
+                        logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(vdextool))
+                    else:
+                        cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
+                        ret = execShell(cmd)
+                        if 'd' in ret.keys():
+                            logging.info('push vdexExtractor success')
+                        cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+vdextool+' \' " '
+                        ret = execShell(cmd)
 
-        #android9出现cdex
-        if self._androidver >= '9':
-            cdextool = 'cdex_converter64'
-            if not arm64:
-                cdextool = 'cdex_converter32'
-            cmd = self._adb + ' shell "ls /data/local/tmp/'+cdextool+' "'
-            ret = execShell(cmd)
-            if 'No such file' in str(ret):
-                if not os.path.isfile(self._dirinter+cdextool): 
-                    logging.info('从android9+ 手机下载app，需要compact-dex-converter')
-                    logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(cdextool))
-                else:
-                    cmd = self._adb + ' push '+self._dirinter+cdextool+' /data/local/tmp/'
-                    ret = execShell(cmd)
-                    if 'd' in ret.keys():
-                        logging.info('push compact-dex-converter success')
-                    cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+cdextool+' \' " '
-                    ret = execShell(cmd)
-        
-        #android7.0出现vdex，在手机上执行转换
-        if self._androidver >= '7':
-            vdextool = 'vdexExtractor64'
-            if not arm64:
-                vdextool = 'vdexExtractor32'
-            cmd = self._adb + ' shell "ls /data/local/tmp/'+vdextool+' "'
-            ret = execShell(cmd)
-            if 'No such file' in str(ret):
-                if not os.path.isfile(self._dirinter+vdextool):
-                    logging.info('从android7+ 手机下载app，需要vdexExtractor')
-                    logging.error('先下载{} 链接: https://pan.baidu.com/s/1VMKyJ3n4ubiXeqICNatzYw 提取码: q8fk 保存到inter目录下'.format(vdextool))
-                else:
-                    cmd = self._adb + ' push '+self._dirinter+vdextool+' /data/local/tmp/'
-                    ret = execShell(cmd)
-                    if 'd' in ret.keys():
-                        logging.info('push vdexExtractor success')
-                    cmd = self._adb + ' shell "su -c \' chmod +x /data/local/tmp/'+vdextool+' \' " '
-                    ret = execShell(cmd)
-
-        #android6未处理odex，需要framework/baksmali
+            #android6未处理odex，需要framework/baksmali
 
         for p in pkgs:
             logging.info('=='+p)
@@ -544,7 +544,7 @@ class AppStarter(object):
                     ret = execShell(cmd)
                     if 'd' in ret.keys():
                         shutil.move(sp, sp+'.apk')
-                        if not self.isDexExist(sp+'.apk') and self._androidver >= '7':
+                        if not auto and not self.isDexExist(sp+'.apk') and self._androidver >= '7':
                             self.assembleAPP(apkpath, sp, vdextool, cdextool)
                     else:
                         logging.error('pull error'+ret.get('e')+apkpath)
@@ -564,8 +564,8 @@ class AppStarter(object):
             
         logging.info('====Download done====')
 
-    def installPkgList(self, pkgs):
-        self.downloadPkgList(pkgs)
+    def installPkgList(self, pkgs, auto=False):
+        self.downloadPkgList(pkgs, auto)
 
         logging.info('======install======')
 
@@ -899,7 +899,7 @@ if __name__ == '__main__':
     python appstarter.py -l com.xiaomi.smarthome   搜索相同开发者APP
     python appstarter.py -l com.xiaomi   搜索类似包名的APP
     ''')
-    parser.add_argument("-a", "--auto", action="store_true", help="自动下载-安装-monkey测试")
+    parser.add_argument("-a", "--auto", action="store_true", help="自动下载-安装-monkey测试(此模式不处理无dex的apk)")
     parser.add_argument("-m", "--monkey", type=str, help="monkey测试")
     parser.add_argument("--startall", action="store_true", help="启动所有组件(包括不导出的)")
     parser.add_argument("--frida", action="store_true", help="使用frida") 
