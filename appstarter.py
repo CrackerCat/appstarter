@@ -490,48 +490,50 @@ class AppStarter(object):
             needPullfromDevice = False
             
             #存在APK时，判断是否有dex、是否过期
-            if os.path.isfile(sp+'.apk'):
-            
-                if self.isDexExist(sp+'.apk'):
-                    ver = self.getVersionApk(p)
-                    over = self.getVersionOnline(p)
-                    dver = self.getVersionDevice(p)
-                    
-                    if not ver:
-                        logging.error('get apk version error')
-                    else:
-                        #线上存在
-                        if over:
-                            tover = over.split(':')
-                            if len(tover) == 2:
-                                # 检查是否半年未更新，未维护APP直接跳过
-                                lastupdate = datetime.datetime.now() - datetime.timedelta(days = 180)
-                                lastupdate = lastupdate.strftime("%Y-%m-%d")
-                                if lastupdate > tover[1]:
-                                    logging.info('!!outdated')
-                                if ver < tover[0]:
-                                    os.remove(sp+'.apk')
-                                    #设备是否存在最新版
-                                    if dver and dver >= tover[0]:
-                                        needPullfromDevice = True
-                                    else:
-                                        needDownload = True
-                                    logging.info('old version - online')
-                            
-                        else:
-                            if dver:
-                                #切换手机时，版本可高可低
-                                if ver != dver:
-                                    os.remove(sp+'.apk')
-                                    needPullfromDevice = True
-                                    logging.info('version not same - device')
-                            else:
-                                #app已经不存在
-                                logging.error('app package name changed')
+            if os.path.isfile(sp+'.apk') :
+                
+                #跳过dex检查
+                if not auto:
+                    if self.isDexExist(sp+'.apk'):
+                        ver = self.getVersionApk(p)
+                        over = self.getVersionOnline(p)
+                        dver = self.getVersionDevice(p)
                         
-                else:
-                    needPullfromDevice = True
-                    os.remove(sp+'.apk')
+                        if not ver:
+                            logging.error('get apk version error')
+                        else:
+                            #线上存在
+                            if over:
+                                tover = over.split(':')
+                                if len(tover) == 2:
+                                    # 检查是否半年未更新，未维护APP直接跳过
+                                    lastupdate = datetime.datetime.now() - datetime.timedelta(days = 180)
+                                    lastupdate = lastupdate.strftime("%Y-%m-%d")
+                                    if lastupdate > tover[1]:
+                                        logging.info('!!outdated')
+                                    if ver < tover[0]:
+                                        os.remove(sp+'.apk')
+                                        #设备是否存在最新版
+                                        if dver and dver >= tover[0]:
+                                            needPullfromDevice = True
+                                        else:
+                                            needDownload = True
+                                        logging.info('old version - online')
+                                
+                            else:
+                                if dver:
+                                    #切换手机时，版本可高可低
+                                    if ver != dver:
+                                        os.remove(sp+'.apk')
+                                        needPullfromDevice = True
+                                        logging.info('version not same - device')
+                                else:
+                                    #app已经不存在
+                                    logging.error('app package name changed')
+                            
+                    else:
+                        needPullfromDevice = True
+                        os.remove(sp+'.apk')
 
             else:
                 if p in self._devicepkg:
