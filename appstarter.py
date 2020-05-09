@@ -184,6 +184,8 @@ class AppStarter(object):
                 ret = execShell(cmd)
 
                 for a in activity:
+                    if not a:
+                        continue
                     logging.info(a)
                     cmd = self._adb + ' shell "su -c \'am start -n '+p+'/'+a+'\' " '
                     #timeout not working, because connected to pipe
@@ -200,6 +202,8 @@ class AppStarter(object):
                 else:
                     service = APKCook(sp+'.apk').show('ms').split(',')
                 for s in service:
+                    if not s:
+                        continue
                     logging.info(s)
                     cmd = self._adb + ' shell "su -c \'am start-service  '+p+'/'+s+'\' " '
                     execShell(cmd, 40)
@@ -210,6 +214,8 @@ class AppStarter(object):
                 else:
                     receiver = APKCook(sp+'.apk').show('mr').split(',')
                 for s in receiver:
+                    if not s:
+                        continue
                     logging.info(s)
                     cmd = self._adb + ' shell "su -c \'am broadcast  '+p+'/'+s+'\' " '
                     execShell(cmd, 40)
