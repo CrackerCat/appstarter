@@ -1,6 +1,7 @@
 # 功能
 - Android APP monkey安全测试，可批量操作
 - 支持MIUI系统APP及线上APP
+- 支持从手机下载app，自动处理vdex/odex
 
 # 使用
 - python3 appstarter.py -h
