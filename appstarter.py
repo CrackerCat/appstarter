@@ -256,12 +256,19 @@ class AppStarter(object):
         cmd = self._adb + ' shell "am force-stop '+pkg+' " '
         execShell(cmd)
 
-    def pushCert(self):
-        certname = 'c8750f0d.0'
-        out = execShell(self._adb+' push inter/'+certname+' /data/local/tmp/')
-        if '1 file pushed' not in str(out):
-            logging.error('cert push error')
-        
+    def pushCert(self, cert=False):
+        if not cert:
+            cert = 'inter/c8750f0d.0'
+        if os.path.isfile(cert):
+            out = execShell(self._adb+' push '+cert+' /data/local/tmp/')
+            if '1 file pushed' not in str(out):
+                print('cert push error '+str(out))
+        else:
+            print('cert file error: '+cert)
+            return
+
+        certname = os.path.basename(cert)
+        print('Use cert '+certname)
 
         #不同shell返回不一样
         out = execShell(self._adb+' shell "ls -Z /system/etc/security/cacerts | head -n1"')
@@ -273,11 +280,11 @@ class AppStarter(object):
                     con = c
             #print(con)
         if not con:
-            logging.error('con error')
+            print('con error')
             print(out)
             return
 
-        #adb shell是否默认root权限
+        # shell是否默认root权限
         if '(root)' not in str(execShell(self._adb+' shell id')):
             out = ""
             out += str(execShell(self._adb+" shell su -c 'setenforce 0 '"))
@@ -290,13 +297,31 @@ class AppStarter(object):
             out += str(execShell(self._adb+" shell su -c 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
         else:
             #子命令使用单引号，否则在红米shell可能出问题
-            out = execShell(self._adb+" shell 'umount /system/etc/security/cacerts;cp -pR /system/etc/security/cacerts /data/local/tmp/;cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/;chmod -R 755 /data/local/tmp/cacerts;chcon -R "+con+" /data/local/tmp/cacerts;mount /data/local/tmp/cacerts /system/etc/security/cacerts'")
+            out = ""
+            out += str(execShell(self._adb+" shell 'umount /system/etc/security/cacerts'"))
+            out += str(execShell(self._adb+" shell 'cp -pR /system/etc/security/cacerts /data/local/tmp/'"))
+            out += str(execShell(self._adb+" shell 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
+            out += str(execShell(self._adb+" shell 'chmod -R 755 /data/local/tmp/cacerts'"))
+            out += str(execShell(self._adb+" shell 'chcon -R "+con+" /data/local/tmp/cacerts'"))
+            out += str(execShell(self._adb+" shell 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
 
         out1 = execShell(self._adb+' shell mount')
         if "/system/etc/security/cacerts" not in str(out1):
-            logging.error('cert '+out)
+            #print('cert '+out)
+            out += str(execShell(self._adb+" shell umount /system/etc/security/cacerts"))
+            out += str(execShell(self._adb+" shell cp -pR /system/etc/security/cacerts /data/local/tmp/"))
+            out += str(execShell(self._adb+" shell cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/"))
+            out += str(execShell(self._adb+" shell chmod -R 755 /data/local/tmp/cacerts"))
+            out += str(execShell(self._adb+" shell chcon -R "+con+" /data/local/tmp/cacerts"))
+            out += str(execShell(self._adb+" shell mount /data/local/tmp/cacerts /system/etc/security/cacerts"))
+
+            out1 = execShell(self._adb+' shell mount')
+            if "/system/etc/security/cacerts" not in str(out1):
+                print('cert '+out)
+            else:
+                print('证书导入成功')
         else:
-            logging.info('证书导入成功')
+            print('证书导入成功')
             
     def detectWifiProxy(self):
         if self._androidver >= '8':
@@ -904,6 +929,11 @@ if __name__ == '__main__':
     python appstarter.py -e /path/to/smarthome.apk   查看米家APP导出组件
     python appstarter.py -e pkglist.txt   查看米家APP导出组件
 
+    python appstarter.py --cert inter/c8750f0d.0 导入证书到system
+        openssl x509 -inform DER -in your_cacert.der -out cacert.pem  
+        openssl x509 -inform PEM -subject_hash_old -in cacert.pem |head -1
+        mv cacert.pem <hash>.0
+
     python appstarter.py -l com.xiaomi.smarthome   搜索相同开发者APP
     python appstarter.py -l com.xiaomi   搜索类似包名的APP
     ''')
@@ -918,6 +948,7 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--clean", action="store_true", help="清理残余进程")
     parser.add_argument("-e", "--export", type=str, help="获取 APK导出组件")
     parser.add_argument("-l", "--lists", type=str, help="搜索包名相关APP")
+    parser.add_argument("--cert", type=str, help="导入证书到system，bypass SSL error")
     
 
     if sys.version_info.major != 3:
@@ -938,7 +969,7 @@ if __name__ == '__main__':
     clean = args.clean
     export = args.export
     frida = args.frida
-
+    cert = args.cert
 
     try:
         if monkey:
@@ -960,6 +991,10 @@ if __name__ == '__main__':
         elif clean:
             appstarter = AppStarter(deviceid)
             appstarter.killMonkey()
+        
+        elif cert:
+            appstarter = AppStarter(deviceid)
+            appstarter.pushCert(cert)
         
         elif export:
             getExport(export)
