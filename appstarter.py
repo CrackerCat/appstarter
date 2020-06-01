@@ -256,19 +256,22 @@ class AppStarter(object):
         cmd = self._adb + ' shell "am force-stop '+pkg+' " '
         execShell(cmd)
 
-    def pushCert(self, cert=False):
+    def pushCert(self, cert=''):
         if not cert:
-            cert = 'inter/c8750f0d.0'
-        if os.path.isfile(cert):
-            out = execShell(self._adb+' push '+cert+' /data/local/tmp/')
-            if '1 file pushed' not in str(out):
-                print('cert push error '+str(out))
-        else:
-            print('cert file error: '+cert)
-            return
+            cert = ['inter/c8750f0d.0']
+        certs = cert.split(',')
+        for cert in certs:
+            cert = cert.strip()
+            if os.path.isfile(cert):
+                out = execShell(self._adb+' push '+cert+' /data/local/tmp/')
+                if '1 file pushed' not in str(out):
+                    print('cert push error '+str(out))
+            else:
+                print('cert file error: '+cert)
+                return
 
-        certname = os.path.basename(cert)
-        print('Use cert '+certname)
+            certname = os.path.basename(cert)
+            print('Use cert '+certname)
 
         #不同shell返回不一样
         out = execShell(self._adb+' shell "ls -Z /system/etc/security/cacerts | head -n1"')
@@ -291,7 +294,9 @@ class AppStarter(object):
             #print("adb no default root, may not work well')
             out += str(execShell(self._adb+" shell su -c 'umount /system/etc/security/cacerts'"))
             out += str(execShell(self._adb+" shell su -c 'cp -pR /system/etc/security/cacerts /data/local/tmp/'"))
-            out += str(execShell(self._adb+" shell su -c 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
+            for cert in certs:
+                certname = os.path.basename(cert)
+                out += str(execShell(self._adb+" shell su -c 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
             out += str(execShell(self._adb+" shell su -c 'chmod -R 755 /data/local/tmp/cacerts'"))
             out += str(execShell(self._adb+" shell su -c 'chcon -R "+con+" /data/local/tmp/cacerts'"))
             out += str(execShell(self._adb+" shell su -c 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
@@ -300,7 +305,9 @@ class AppStarter(object):
             out = ""
             out += str(execShell(self._adb+" shell 'umount /system/etc/security/cacerts'"))
             out += str(execShell(self._adb+" shell 'cp -pR /system/etc/security/cacerts /data/local/tmp/'"))
-            out += str(execShell(self._adb+" shell 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
+            for cert in certs:
+                certname = os.path.basename(cert)
+                out += str(execShell(self._adb+" shell 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
             out += str(execShell(self._adb+" shell 'chmod -R 755 /data/local/tmp/cacerts'"))
             out += str(execShell(self._adb+" shell 'chcon -R "+con+" /data/local/tmp/cacerts'"))
             out += str(execShell(self._adb+" shell 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
@@ -310,7 +317,9 @@ class AppStarter(object):
             #print('cert '+out)
             out += str(execShell(self._adb+" shell umount /system/etc/security/cacerts"))
             out += str(execShell(self._adb+" shell cp -pR /system/etc/security/cacerts /data/local/tmp/"))
-            out += str(execShell(self._adb+" shell cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/"))
+            for cert in certs:
+                certname = os.path.basename(cert)
+                out += str(execShell(self._adb+" shell cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/"))
             out += str(execShell(self._adb+" shell chmod -R 755 /data/local/tmp/cacerts"))
             out += str(execShell(self._adb+" shell chcon -R "+con+" /data/local/tmp/cacerts"))
             out += str(execShell(self._adb+" shell mount /data/local/tmp/cacerts /system/etc/security/cacerts"))
@@ -929,7 +938,7 @@ if __name__ == '__main__':
     python appstarter.py -e /path/to/smarthome.apk   查看米家APP导出组件
     python appstarter.py -e pkglist.txt   查看米家APP导出组件
 
-    python appstarter.py --cert inter/c8750f0d.0 导入证书到system
+    python appstarter.py --cert inter/c8750f0d.0[,cert2] 导入证书到system
         openssl x509 -inform DER -in your_cacert.der -out cacert.pem  
         openssl x509 -inform PEM -subject_hash_old -in cacert.pem |head -1
         mv cacert.pem <hash>.0
