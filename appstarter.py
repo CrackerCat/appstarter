@@ -290,16 +290,27 @@ class AppStarter(object):
         # shell是否默认root权限
         if '(root)' not in str(execShell(self._adb+' shell id')):
             out = ""
-            out += str(execShell(self._adb+" shell su -c 'setenforce 0 '"))
+            out += str(execShell(self._adb+" shell \"su -c 'setenforce 0 '\""))
             #print("adb no default root, may not work well')
-            out += str(execShell(self._adb+" shell su -c 'umount /system/etc/security/cacerts'"))
-            out += str(execShell(self._adb+" shell su -c 'cp -pR /system/etc/security/cacerts /data/local/tmp/'"))
+            out += str(execShell(self._adb+" shell \"su -c 'umount /system/etc/security/cacerts'\""))
+            out += str(execShell(self._adb+" shell \"su -c 'cp -pR /system/etc/security/cacerts /data/local/tmp/'\""))
             for cert in certs:
                 certname = os.path.basename(cert)
-                out += str(execShell(self._adb+" shell su -c 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
-            out += str(execShell(self._adb+" shell su -c 'chmod -R 755 /data/local/tmp/cacerts'"))
-            out += str(execShell(self._adb+" shell su -c 'chcon -R "+con+" /data/local/tmp/cacerts'"))
-            out += str(execShell(self._adb+" shell su -c 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
+                out += str(execShell(self._adb+" shell \"su -c 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'\""))
+            out += str(execShell(self._adb+" shell \"su -c 'chmod -R 755 /data/local/tmp/cacerts'\""))
+            out += str(execShell(self._adb+" shell \"su -c 'chcon -R "+con+" /data/local/tmp/cacerts'\""))
+            out += str(execShell(self._adb+" shell \"su -c 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'\""))
+
+            # out += str(execShell(self._adb+" shell su -c 'setenforce 0 '"))
+            # #print("adb no default root, may not work well')
+            # out += str(execShell(self._adb+" shell su -c 'umount /system/etc/security/cacerts'"))
+            # out += str(execShell(self._adb+" shell su -c 'cp -pR /system/etc/security/cacerts /data/local/tmp/'"))
+            # for cert in certs:
+            #     certname = os.path.basename(cert)
+            #     out += str(execShell(self._adb+" shell su -c 'cp /data/local/tmp/"+certname+" /data/local/tmp/cacerts/'"))
+            # out += str(execShell(self._adb+" shell su -c 'chmod -R 755 /data/local/tmp/cacerts'"))
+            # out += str(execShell(self._adb+" shell su -c 'chcon -R "+con+" /data/local/tmp/cacerts'"))
+            # out += str(execShell(self._adb+" shell su -c 'mount /data/local/tmp/cacerts /system/etc/security/cacerts'"))
         else:
             #子命令使用单引号，否则在红米shell可能出问题
             out = ""
