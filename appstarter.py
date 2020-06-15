@@ -94,8 +94,8 @@ class AppStarter(object):
         cmd = self._adb + ' shell  "mkdir /sdcard/monkeylogs"'
         ret = execShell(cmd)
         
-        self.pushCert()
-        self.detectWifiProxy()
+        # self.pushCert()
+        # self.detectWifiProxy()
 
         if usefrida and not self.setupFrida():
             return
@@ -258,8 +258,9 @@ class AppStarter(object):
 
     def pushCert(self, cert=''):
         if not cert:
-            cert = ['inter/c8750f0d.0']
-        certs = cert.split(',')
+            certs = ['inter/c8750f0d.0']
+        else:
+            certs = cert.split(',')
         for cert in certs:
             cert = cert.strip()
             if os.path.isfile(cert):
