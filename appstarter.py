@@ -480,7 +480,8 @@ class AppStarter(object):
             os.mkdir(self._dirappstmp)
         except:
             pass
-
+        cdextool = 'cdex_converter64'
+        vdextool = 'vdexExtractor64'
         if not auto:
             arm64 = True
             cmd = self._adb + ' shell "getprop ro.product.cpu.abi"'
